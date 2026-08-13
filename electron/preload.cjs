@@ -4,6 +4,8 @@ contextBridge.exposeInMainWorld('eazyflow', {
   getSnapshot: () => ipcRenderer.invoke('store:get'),
   createProject: (project) => ipcRenderer.invoke('project:create', project),
   updateProject: (id, patch) => ipcRenderer.invoke('project:update', id, patch),
+  deleteProject: (id) => ipcRenderer.invoke('project:delete', id),
+  updateSettings: (settings) => ipcRenderer.invoke('settings:update', settings),
   importFiles: (projectId, category) => ipcRenderer.invoke('file:import', projectId, category),
   openFile: (projectId, fileId) => ipcRenderer.invoke('file:open', projectId, fileId),
   revealFile: (projectId, fileId) => ipcRenderer.invoke('file:reveal', projectId, fileId),
