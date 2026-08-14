@@ -1,12 +1,14 @@
-const { app, BrowserWindow, ipcMain, dialog, shell, Menu } = require('electron')
+const { app, BrowserWindow, ipcMain, dialog, shell, Menu, protocol, net } = require('electron')
 const { autoUpdater } = require('electron-updater')
 const fs = require('node:fs/promises')
 const path = require('node:path')
 const crypto = require('node:crypto')
+const { pathToFileURL } = require('node:url')
 
 let mainWindow
 const isDev = Boolean(process.env.EAZYFLOW_DEV_URL)
 const categories = new Set(['task', 'reference', 'delivery', 'other'])
+protocol.registerSchemesAsPrivileged([{ scheme: 'eazyflow-file', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }])
 
 const seed = () => ({ projects: [], settings: null })
 
@@ -20,14 +22,16 @@ async function readStore() {
     const data = JSON.parse(await fs.readFile(p.store, 'utf8'))
     if (data.settings) data.settings = {
       weekPreset: '双休', workDays: [1, 2, 3, 4, 5], bigWeekStartsThisWeek: true,
-      publicHolidays: true, makeupWorkdays: true, irregularRest: false, restDates: [],
+      publicHolidays: true, makeupWorkdays: true, irregularRest: false, restDates: [], dayOverrides: {},
       ...data.settings
     }
+    let migrated = false
     data.projects = (data.projects || []).map((project) => ({
       ...project,
       status: ['已完成', '已归档'].includes(project.status) ? project.status : '进行中',
-      completedAt: project.completedAt || undefined
+      completedAt: project.status === '已完成' ? (project.completedAt || (migrated = true, new Date().toISOString())) : undefined
     }))
+    if (migrated) await writeStore(data)
     return data
   }
   catch { const data = seed(); await writeStore(data); return data }
@@ -55,6 +59,13 @@ function createWindow() {
 
 app.whenReady().then(async () => {
   Menu.setApplicationMenu(null)
+  protocol.handle('eazyflow-file', async (request) => {
+    const url = new URL(request.url)
+    const projectId = decodeURIComponent(url.hostname)
+    const fileId = decodeURIComponent(url.pathname.slice(1))
+    const { filePath } = await findFile(projectId, fileId)
+    return net.fetch(pathToFileURL(filePath).toString())
+  })
   createWindow()
   if (!isDev) setTimeout(() => autoUpdater.checkForUpdatesAndNotify().catch(() => {}), 3500)
 })
