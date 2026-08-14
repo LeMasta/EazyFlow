@@ -1,4 +1,4 @@
-export type ProjectStatus = '自动' | '已完成' | '已归档'
+export type ProjectStatus = '进行中' | '已完成' | '已归档'
 export type DisplayStatus = '未开始' | '进行中' | '已完成' | '已归档'
 export type FileCategory = 'task' | 'reference' | 'delivery' | 'other'
 
@@ -19,6 +19,7 @@ export interface Project {
   status: ProjectStatus
   startAt: string
   dueAt?: string
+  completedAt?: string
   createdAt: string
   files: ProjectFile[]
 }
@@ -28,6 +29,13 @@ export interface WorkSettings {
   endHour: number
   breakStart: number
   breakEnd: number
+  weekPreset: '双休' | '单休' | '大小周' | '自定义'
+  workDays: number[]
+  bigWeekStartsThisWeek: boolean
+  publicHolidays: boolean
+  makeupWorkdays: boolean
+  irregularRest: boolean
+  restDates: string[]
 }
 
 export interface StoreSnapshot { projects: Project[]; settings: WorkSettings | null }
@@ -41,6 +49,7 @@ declare global {
       deleteProject: (id: string) => Promise<void>
       updateSettings: (settings: WorkSettings) => Promise<WorkSettings>
       importFiles: (projectId: string, category: FileCategory) => Promise<ProjectFile[]>
+      importDroppedFiles: (projectId: string, category: FileCategory, files: File[]) => Promise<ProjectFile[]>
       openFile: (projectId: string, fileId: string) => Promise<void>
       revealFile: (projectId: string, fileId: string) => Promise<void>
       deleteFile: (projectId: string, fileId: string) => Promise<void>
