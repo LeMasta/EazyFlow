@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('eazyflow', {
   updateSettings: (settings) => ipcRenderer.invoke('settings:update', settings),
   importFiles: (projectId, category) => ipcRenderer.invoke('file:import', projectId, category),
   importDroppedFiles: (projectId, category, files) => ipcRenderer.invoke('file:import-paths', projectId, category, files.map((file) => webUtils.getPathForFile(file))),
+  filePreviewUrl: (projectId, fileId) => `eazyflow-file://${projectId}/${fileId}`,
   openFile: (projectId, fileId) => ipcRenderer.invoke('file:open', projectId, fileId),
   revealFile: (projectId, fileId) => ipcRenderer.invoke('file:reveal', projectId, fileId),
   deleteFile: (projectId, fileId) => ipcRenderer.invoke('file:delete', projectId, fileId),

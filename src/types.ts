@@ -1,6 +1,7 @@
 export type ProjectStatus = '进行中' | '已完成' | '已归档'
 export type DisplayStatus = '未开始' | '进行中' | '已完成' | '已归档'
 export type FileCategory = 'task' | 'reference' | 'delivery' | 'other'
+export type DayOverride = 'leave' | 'timeoff' | 'overtime'
 
 export interface ProjectFile {
   id: string
@@ -36,6 +37,7 @@ export interface WorkSettings {
   makeupWorkdays: boolean
   irregularRest: boolean
   restDates: string[]
+  dayOverrides: Record<string, DayOverride>
 }
 
 export interface StoreSnapshot { projects: Project[]; settings: WorkSettings | null }
@@ -50,6 +52,7 @@ declare global {
       updateSettings: (settings: WorkSettings) => Promise<WorkSettings>
       importFiles: (projectId: string, category: FileCategory) => Promise<ProjectFile[]>
       importDroppedFiles: (projectId: string, category: FileCategory, files: File[]) => Promise<ProjectFile[]>
+      filePreviewUrl: (projectId: string, fileId: string) => string
       openFile: (projectId: string, fileId: string) => Promise<void>
       revealFile: (projectId: string, fileId: string) => Promise<void>
       deleteFile: (projectId: string, fileId: string) => Promise<void>
