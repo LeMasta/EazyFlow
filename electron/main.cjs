@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron')
+const { app, BrowserWindow, ipcMain, dialog, shell, Menu } = require('electron')
 const { autoUpdater } = require('electron-updater')
 const fs = require('node:fs/promises')
 const path = require('node:path')
@@ -18,10 +18,15 @@ async function readStore() {
   const p = paths(); await fs.mkdir(p.files, { recursive: true })
   try {
     const data = JSON.parse(await fs.readFile(p.store, 'utf8'))
-    data.settings ??= null
+    if (data.settings) data.settings = {
+      weekPreset: '双休', workDays: [1, 2, 3, 4, 5], bigWeekStartsThisWeek: true,
+      publicHolidays: true, makeupWorkdays: true, irregularRest: false, restDates: [],
+      ...data.settings
+    }
     data.projects = (data.projects || []).map((project) => ({
       ...project,
-      status: ['已完成', '已归档'].includes(project.status) ? project.status : '自动'
+      status: ['已完成', '已归档'].includes(project.status) ? project.status : '进行中',
+      completedAt: project.completedAt || undefined
     }))
     return data
   }
@@ -41,13 +46,15 @@ async function findFile(projectId, fileId) {
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1440, height: 920, minWidth: 1080, minHeight: 720, backgroundColor: '#f5f5f1',
-    title: 'EazyFlow', webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false }
+    title: 'EazyFlow', autoHideMenuBar: true, webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false }
   })
+  mainWindow.setMenuBarVisibility(false)
   if (isDev) mainWindow.loadURL(process.env.EAZYFLOW_DEV_URL)
   else mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'))
 }
 
 app.whenReady().then(async () => {
+  Menu.setApplicationMenu(null)
   createWindow()
   if (!isDev) setTimeout(() => autoUpdater.checkForUpdatesAndNotify().catch(() => {}), 3500)
 })
@@ -77,20 +84,27 @@ ipcMain.handle('settings:update', async (_event, settings) => {
   if (values.some((value) => !Number.isFinite(value)) || values[0] < 0 || values[1] > 24 || values[0] >= values[1] || values[2] < values[0] || values[3] > values[1] || values[2] >= values[3]) throw new Error('工作时间设置无效')
   const store = await readStore(); store.settings = settings; await writeStore(store); return settings
 })
-ipcMain.handle('file:import', async (_event, projectId, category) => {
+async function importPaths(projectId, category, filePaths) {
   if (!categories.has(category)) throw new Error('无效文件分类')
-  const result = await dialog.showOpenDialog(mainWindow, { properties: ['openFile', 'multiSelections'] })
-  if (result.canceled) return []
   const store = await readStore(); const project = store.projects.find((p) => p.id === projectId)
   if (!project) throw new Error('项目不存在')
   const target = path.join(paths().files, projectId, category); await fs.mkdir(target, { recursive: true })
   const imported = []
-  for (const source of result.filePaths) {
-    const stat = await fs.stat(source); const extension = path.extname(source); const file = { id: crypto.randomUUID(), name: path.basename(source), category, size: stat.size, extension, createdAt: new Date().toISOString() }
+  for (const source of filePaths) {
+    const stat = await fs.stat(source)
+    if (!stat.isFile()) continue
+    const extension = path.extname(source); const file = { id: crypto.randomUUID(), name: path.basename(source), category, size: stat.size, extension, createdAt: new Date().toISOString() }
     await fs.copyFile(source, path.join(target, `${file.id}${extension}`)); project.files.push(file); imported.push(file)
   }
   await writeStore(store); return imported
+}
+ipcMain.handle('file:import', async (_event, projectId, category) => {
+  if (!categories.has(category)) throw new Error('无效文件分类')
+  const result = await dialog.showOpenDialog(mainWindow, { properties: ['openFile', 'multiSelections'] })
+  if (result.canceled) return []
+  return importPaths(projectId, category, result.filePaths)
 })
+ipcMain.handle('file:import-paths', (_event, projectId, category, filePaths) => importPaths(projectId, category, filePaths))
 ipcMain.handle('file:open', async (_event, projectId, fileId) => { const { filePath } = await findFile(projectId, fileId); const error = await shell.openPath(filePath); if (error) throw new Error(error) })
 ipcMain.handle('file:reveal', async (_event, projectId, fileId) => { const { filePath } = await findFile(projectId, fileId); shell.showItemInFolder(filePath) })
 ipcMain.handle('file:delete', async (_event, projectId, fileId) => {

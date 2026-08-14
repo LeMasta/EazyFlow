@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron')
+const { contextBridge, ipcRenderer, webUtils } = require('electron')
 
 contextBridge.exposeInMainWorld('eazyflow', {
   getSnapshot: () => ipcRenderer.invoke('store:get'),
@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('eazyflow', {
   deleteProject: (id) => ipcRenderer.invoke('project:delete', id),
   updateSettings: (settings) => ipcRenderer.invoke('settings:update', settings),
   importFiles: (projectId, category) => ipcRenderer.invoke('file:import', projectId, category),
+  importDroppedFiles: (projectId, category, files) => ipcRenderer.invoke('file:import-paths', projectId, category, files.map((file) => webUtils.getPathForFile(file))),
   openFile: (projectId, fileId) => ipcRenderer.invoke('file:open', projectId, fileId),
   revealFile: (projectId, fileId) => ipcRenderer.invoke('file:reveal', projectId, fileId),
   deleteFile: (projectId, fileId) => ipcRenderer.invoke('file:delete', projectId, fileId),
