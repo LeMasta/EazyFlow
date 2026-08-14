@@ -1,4 +1,5 @@
-export type ProjectStatus = '未开始' | '进行中' | '已完成' | '已归档'
+export type ProjectStatus = '自动' | '已完成' | '已归档'
+export type DisplayStatus = '未开始' | '进行中' | '已完成' | '已归档'
 export type FileCategory = 'task' | 'reference' | 'delivery' | 'other'
 
 export interface ProjectFile {
@@ -22,7 +23,14 @@ export interface Project {
   files: ProjectFile[]
 }
 
-export interface StoreSnapshot { projects: Project[] }
+export interface WorkSettings {
+  startHour: number
+  endHour: number
+  breakStart: number
+  breakEnd: number
+}
+
+export interface StoreSnapshot { projects: Project[]; settings: WorkSettings | null }
 
 declare global {
   interface Window {
@@ -30,6 +38,8 @@ declare global {
       getSnapshot: () => Promise<StoreSnapshot>
       createProject: (project: Omit<Project, 'id' | 'createdAt' | 'files'>) => Promise<Project>
       updateProject: (id: string, patch: Partial<Project>) => Promise<Project>
+      deleteProject: (id: string) => Promise<void>
+      updateSettings: (settings: WorkSettings) => Promise<WorkSettings>
       importFiles: (projectId: string, category: FileCategory) => Promise<ProjectFile[]>
       openFile: (projectId: string, fileId: string) => Promise<void>
       revealFile: (projectId: string, fileId: string) => Promise<void>

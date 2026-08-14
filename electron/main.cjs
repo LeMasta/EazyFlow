@@ -8,16 +8,7 @@ let mainWindow
 const isDev = Boolean(process.env.EAZYFLOW_DEV_URL)
 const categories = new Set(['task', 'reference', 'delivery', 'other'])
 
-const now = new Date()
-const localIso = (date, hour, minute = 0) => {
-  const d = new Date(date); d.setHours(hour, minute, 0, 0); return d.toISOString()
-}
-const offset = (days) => { const d = new Date(now); d.setDate(d.getDate() + days); return d }
-const seed = () => ({ projects: [
-  { id: crypto.randomUUID(), name: '品牌视觉提案', description: '整理视觉方向并交付第一轮提案', color: '#7557d9', status: '进行中', startAt: localIso(offset(-1), 9), dueAt: localIso(offset(1), 18), createdAt: now.toISOString(), files: [] },
-  { id: crypto.randomUUID(), name: '产品手册排版', description: '等待客户补充最终文案，交付时间暂未确定', color: '#e18b57', status: '进行中', startAt: localIso(offset(0), 13, 30), createdAt: now.toISOString(), files: [] },
-  { id: crypto.randomUUID(), name: '季度复盘视频', description: '剪辑、字幕与封面输出', color: '#4c9b86', status: '未开始', startAt: localIso(offset(2), 10), dueAt: localIso(offset(5), 16), createdAt: now.toISOString(), files: [] }
-] })
+const seed = () => ({ projects: [], settings: null })
 
 function paths() {
   const root = path.join(app.getPath('userData'), 'workspace')
@@ -25,7 +16,15 @@ function paths() {
 }
 async function readStore() {
   const p = paths(); await fs.mkdir(p.files, { recursive: true })
-  try { return JSON.parse(await fs.readFile(p.store, 'utf8')) }
+  try {
+    const data = JSON.parse(await fs.readFile(p.store, 'utf8'))
+    data.settings ??= null
+    data.projects = (data.projects || []).map((project) => ({
+      ...project,
+      status: ['已完成', '已归档'].includes(project.status) ? project.status : '自动'
+    }))
+    return data
+  }
   catch { const data = seed(); await writeStore(data); return data }
 }
 async function writeStore(data) {
@@ -65,6 +64,18 @@ ipcMain.handle('project:update', async (_event, id, patch) => {
   if (index < 0) throw new Error('项目不存在')
   const safe = { ...patch }; delete safe.id; delete safe.files; delete safe.createdAt
   store.projects[index] = { ...store.projects[index], ...safe }; await writeStore(store); return store.projects[index]
+})
+ipcMain.handle('project:delete', async (_event, id) => {
+  const store = await readStore(); const project = store.projects.find((p) => p.id === id)
+  if (!project) throw new Error('项目不存在')
+  const folder = path.join(paths().files, id)
+  try { await fs.access(folder); await shell.trashItem(folder) } catch (error) { if (error?.code !== 'ENOENT') throw error }
+  store.projects = store.projects.filter((p) => p.id !== id); await writeStore(store)
+})
+ipcMain.handle('settings:update', async (_event, settings) => {
+  const values = ['startHour', 'endHour', 'breakStart', 'breakEnd'].map((key) => Number(settings[key]))
+  if (values.some((value) => !Number.isFinite(value)) || values[0] < 0 || values[1] > 24 || values[0] >= values[1] || values[2] < values[0] || values[3] > values[1] || values[2] >= values[3]) throw new Error('工作时间设置无效')
+  const store = await readStore(); store.settings = settings; await writeStore(store); return settings
 })
 ipcMain.handle('file:import', async (_event, projectId, category) => {
   if (!categories.has(category)) throw new Error('无效文件分类')
