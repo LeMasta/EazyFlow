@@ -17,27 +17,38 @@ jobs:
   create-tag:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.release-version.outputs.value }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: main
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
       - name: Validate version and create release tag
+        id: release-version
         shell: bash
         env:
           RELEASE_VERSION: ${{ inputs.version }}
         run: |
           VERSION="${RELEASE_VERSION#v}"
+          echo "value=$VERSION" >> "$GITHUB_OUTPUT"
           PACKAGE_VERSION="$(node -p "require('./package.json').version")"
           if [ "$VERSION" != "$PACKAGE_VERSION" ]; then
             echo "::error::输入版本 $VERSION 与 package.json 中的 $PACKAGE_VERSION 不一致"
             exit 1
           fi
-          if git ls-remote --exit-code --tags origin "refs/tags/v$VERSION" >/dev/null 2>&1; then
-            echo "::error::标签 v$VERSION 已存在，请勿重复发布"
-            exit 1
+          CURRENT_COMMIT="$(git rev-parse HEAD)"
+          if git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
+            EXISTING_COMMIT="$(git rev-list -n 1 "v$VERSION")"
+            if ! git merge-base --is-ancestor "$EXISTING_COMMIT" "$CURRENT_COMMIT"; then
+              echo "::error::标签 v$VERSION 不属于当前 main 的提交历史，无法安全复用"
+              exit 1
+            fi
+            echo "::notice::标签 v$VERSION 已存在于当前 main 的提交历史，将直接继续发布"
+            exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -45,10 +56,16 @@ jobs:
           git push origin "v$VERSION"
 
   release:
-    if: github.event_name == 'push'
+    needs: create-tag
+    if: >-
+      always() &&
+      (github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && needs.create-tag.result == 'success'))
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', needs.create-tag.outputs.version) || github.ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
