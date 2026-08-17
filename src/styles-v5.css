@@ -1,0 +1,29 @@
+/* v0.5 — live timelines, overdue alerts and editable completion times */
+.overdue-row .row-project{background:#fff7f7}
+.overdue-row .row-project b,.overdue-row .row-project small{color:#b92f3c}
+.overdue-bubble{--bubble:#d0444f!important;background:linear-gradient(90deg,#f9dfe2,#fff1f2)!important;border-left-color:#d0444f!important;color:#8f2430!important;box-shadow:0 3px 12px #d0444f2b}
+.overdue-bubble:hover{background:#f8d7db!important;box-shadow:0 5px 16px #d0444f3b}
+.overdue-bubble small{color:#a23c46!important}
+.overdue-pill{--bubble:#d0444f!important;background:#f9dfe2!important;border-left-color:#d0444f!important;color:#9c2934!important}
+.overdue-pill em{color:#b52e3a;font-weight:700}
+.overdue-hero{border-color:#e3aeb4;background:linear-gradient(135deg,#fff8f8,#fff)}
+.overdue-status{background:#f8dadd!important;color:#a92734!important}
+
+.project-hero{display:grid;grid-template-columns:minmax(250px,1fr) auto;align-items:center}
+.project-meta{display:grid;grid-template-columns:repeat(2,minmax(145px,1fr));gap:16px 24px}
+.project-meta>div{min-width:0}
+.project-meta b{white-space:nowrap}
+.project-meta em{font-style:normal;font-size:9px;font-weight:700;margin-top:-2px}
+.early-variance{color:#4d8760}.late-variance{color:#bd3542}
+
+.editor-modal input:not([type=color]),.editor-modal textarea{user-select:text;-webkit-user-select:text;pointer-events:auto;cursor:text;caret-color:#24231f;color:#24231f}
+.editor-modal input:not([type=color])::selection,.editor-modal textarea::selection{background:#cfc4f5;color:#24231f}
+.editor-modal .form-row{align-items:start}
+.editor-modal .form-row label{margin-top:15px;min-width:0}
+.editor-modal .form-row input,.editor-modal .form-row select{width:100%;min-height:42px}
+.editor-modal .field-help{display:block;min-height:14px;margin-top:1px;line-height:1.35}
+
+@media(max-width:1200px){
+  .project-hero{grid-template-columns:1fr;gap:22px}
+  .project-meta{grid-template-columns:repeat(4,minmax(120px,1fr));width:100%}
+}

@@ -26,11 +26,12 @@ async function readStore() {
       ...data.settings
     }
     let migrated = false
-    data.projects = (data.projects || []).map((project) => ({
-      ...project,
-      status: ['已完成', '已归档'].includes(project.status) ? project.status : '进行中',
-      completedAt: project.status === '已完成' ? (project.completedAt || (migrated = true, new Date().toISOString())) : undefined
-    }))
+    data.projects = (data.projects || []).map((project) => {
+      const completed = project.status === '已完成' || project.status === '已归档'
+      const completedAt = completed ? (project.completedAt || project.dueAt || new Date().toISOString()) : undefined
+      if (project.status === '已归档' || (completed && !project.completedAt)) migrated = true
+      return { ...project, status: completed ? '已完成' : '进行中', completedAt }
+    })
     if (migrated) await writeStore(data)
     return data
   }
