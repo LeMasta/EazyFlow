@@ -1,5 +1,5 @@
-export type ProjectStatus = '进行中' | '已完成' | '已归档'
-export type DisplayStatus = '未开始' | '进行中' | '已完成' | '已归档'
+export type ProjectStatus = '进行中' | '已完成'
+export type DisplayStatus = '未开始' | '进行中' | '已完成'
 export type FileCategory = 'task' | 'reference' | 'delivery' | 'other'
 export type DayOverride = 'leave' | 'timeoff' | 'overtime'
 
