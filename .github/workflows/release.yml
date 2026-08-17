@@ -4,11 +4,6 @@ on:
   push:
     tags: ['v*']
   workflow_dispatch:
-    inputs:
-      version:
-        description: '要发布的版本号（例如 0.5.0）'
-        required: true
-        type: string
 
 permissions:
   contents: write
@@ -27,19 +22,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Validate version and create release tag
+      - name: Read version and create release tag
         id: release-version
         shell: bash
-        env:
-          RELEASE_VERSION: ${{ inputs.version }}
         run: |
-          VERSION="${RELEASE_VERSION#v}"
+          VERSION="$(node -p "require('./package.json').version")"
           echo "value=$VERSION" >> "$GITHUB_OUTPUT"
-          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
-          if [ "$VERSION" != "$PACKAGE_VERSION" ]; then
-            echo "::error::输入版本 $VERSION 与 package.json 中的 $PACKAGE_VERSION 不一致"
-            exit 1
-          fi
           CURRENT_COMMIT="$(git rev-parse HEAD)"
           if git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
             EXISTING_COMMIT="$(git rev-list -n 1 "v$VERSION")"
