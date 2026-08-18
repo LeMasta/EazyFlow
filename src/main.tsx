@@ -6,5 +6,6 @@ import './styles-v2.css'
 import './styles-v3.css'
 import './styles-v4.css'
 import './styles-v5.css'
+import './styles-v6.css'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><App /></React.StrictMode>)
