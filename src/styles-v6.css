@@ -1,0 +1,13 @@
+/* v0.6 — project folders, storage settings and folder imports */
+.sidebar-bottom>.selected{background:#3a3933;color:#fff}
+.settings-page{padding:48px 52px;max-width:1220px;margin:0 auto}
+.settings-header{margin-bottom:32px}.settings-header h1{font-size:38px;margin:3px 0 8px}.settings-header>p:last-child{color:#817e75;margin:0}
+.settings-card{display:grid;grid-template-columns:54px minmax(0,1fr) auto;gap:20px;align-items:start;background:#fff;border:1px solid #dfdcd3;border-radius:22px;padding:26px;margin-bottom:18px;box-shadow:0 8px 28px #28261e0a}
+.settings-card-icon{width:50px;height:50px;border-radius:15px;background:#f0eee8;display:grid;place-items:center}.settings-card-icon svg{width:23px}
+.settings-card-body h2{font-size:19px;margin:2px 0 8px}.settings-card-body p{margin:0 0 13px;color:#59574f;line-height:1.6}.settings-card-body small{display:block;color:#918e85;line-height:1.55;margin-top:10px}
+.storage-path{background:#f7f6f2;border:1px solid #e5e2d9;border-radius:11px;padding:11px 13px;color:#44423c;font:13px/1.4 ui-monospace,SFMono-Regular,Consolas,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.settings-card-actions{display:flex;gap:9px;align-items:center}.settings-card-actions button{white-space:nowrap;display:flex;align-items:center;gap:7px}.settings-card-actions svg{width:17px}
+.file-heading-actions{margin-left:auto;display:flex;gap:8px}.file-heading-actions button{position:static!important;display:flex;align-items:center;gap:6px;white-space:nowrap}.file-heading-actions svg{width:17px}
+.material-empty{cursor:default}.compact-drop{cursor:default!important}
+.folder-row{background:#fbfaf6}.folder-row .file-type{background:#ece8dc;color:#5d594d}.folder-row .file-type svg{width:21px}
+@media(max-width:1100px){.settings-page{padding:34px}.settings-card{grid-template-columns:48px minmax(0,1fr)}.settings-card-actions{grid-column:2}.file-heading{flex-wrap:wrap}.file-heading-actions{width:100%;margin-left:72px}}

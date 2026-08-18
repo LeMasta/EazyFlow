@@ -7,8 +7,10 @@ export interface ProjectFile {
   id: string
   name: string
   category: FileCategory
+  kind?: 'file' | 'folder'
   size: number
   extension: string
+  storedName?: string
   createdAt: string
 }
 
@@ -21,6 +23,7 @@ export interface Project {
   startAt: string
   dueAt?: string
   completedAt?: string
+  folderName?: string
   createdAt: string
   files: ProjectFile[]
 }
@@ -40,7 +43,7 @@ export interface WorkSettings {
   dayOverrides: Record<string, DayOverride>
 }
 
-export interface StoreSnapshot { projects: Project[]; settings: WorkSettings | null }
+export interface StoreSnapshot { projects: Project[]; settings: WorkSettings | null; storageRoot: string }
 
 declare global {
   interface Window {
@@ -51,11 +54,14 @@ declare global {
       deleteProject: (id: string) => Promise<void>
       updateSettings: (settings: WorkSettings) => Promise<WorkSettings>
       importFiles: (projectId: string, category: FileCategory) => Promise<ProjectFile[]>
+      importFolder: (projectId: string, category: FileCategory) => Promise<ProjectFile[]>
       importDroppedFiles: (projectId: string, category: FileCategory, files: File[]) => Promise<ProjectFile[]>
       filePreviewUrl: (projectId: string, fileId: string) => string
       openFile: (projectId: string, fileId: string) => Promise<void>
       revealFile: (projectId: string, fileId: string) => Promise<void>
       deleteFile: (projectId: string, fileId: string) => Promise<void>
+      selectStorageRoot: () => Promise<string | undefined>
+      revealStorageRoot: () => Promise<void>
       checkForUpdates: () => Promise<void>
       installUpdate: () => Promise<void>
       onUpdateStatus: (callback: (status: string) => void) => () => void
