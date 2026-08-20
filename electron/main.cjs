@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell, Menu, protocol, net } = require('electron')
+const { app, BrowserWindow, ipcMain, dialog, shell, clipboard, Menu, protocol, net } = require('electron')
 const { autoUpdater } = require('electron-updater')
 const fs = require('node:fs/promises')
 const path = require('node:path')
@@ -160,6 +160,27 @@ async function importPaths(projectId, category, sourcePaths) {
   }
   await writeStore(store); return imported
 }
+async function importClipboardItems(projectId, category, items) {
+  if (!categories.has(category)) throw new Error('无效文件分类')
+  const imported = [], pathItems = items.filter((item) => item.path).map((item) => item.path)
+  if (pathItems.length) imported.push(...await importPaths(projectId, category, pathItems))
+  const memoryItems = items.filter((item) => !item.path && item.data)
+  if (!memoryItems.length) return imported
+  const store = await readStore(), project = store.projects.find((p) => p.id === projectId)
+  if (!project) throw new Error('项目不存在')
+  const targetRoot = path.join(store.storageRoot, project.folderName, categoryFolders[category]); await fs.mkdir(targetRoot, { recursive: true })
+  const mimeExtensions = { 'image/png': '.png', 'image/jpeg': '.jpg', 'image/gif': '.gif', 'image/webp': '.webp', 'image/bmp': '.bmp' }
+  for (const item of memoryItems) {
+    const buffer = Buffer.isBuffer(item.data) ? item.data : item.data?.type === 'Buffer' ? Buffer.from(item.data.data) : Buffer.from(item.data)
+    if (buffer.length > 100 * 1024 * 1024) throw new Error('单个剪贴板文件不能超过 100 MB')
+    const extension = path.extname(item.name || '') || mimeExtensions[item.type] || ''
+    const fallback = item.type?.startsWith('image/') ? `截图-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}${extension || '.png'}` : `剪贴板文件${extension}`
+    const originalName = item.name && item.name !== 'image.png' ? item.name : fallback, storedName = await uniqueName(targetRoot, originalName)
+    const file = { id: crypto.randomUUID(), name: originalName, storedName, kind: 'file', category, size: buffer.length, extension: path.extname(storedName), createdAt: new Date().toISOString() }
+    await fs.writeFile(path.join(targetRoot, storedName), buffer); project.files.push(file); imported.push(file)
+  }
+  await writeStore(store); return imported
+}
 ipcMain.handle('file:import', async (_event, projectId, category) => {
   if (!categories.has(category)) throw new Error('无效文件分类')
   const result = await dialog.showOpenDialog(mainWindow, { properties: ['openFile', 'multiSelections'] })
@@ -171,8 +192,17 @@ ipcMain.handle('file:import-folder', async (_event, projectId, category) => {
   return result.canceled ? [] : importPaths(projectId, category, result.filePaths)
 })
 ipcMain.handle('file:import-paths', (_event, projectId, category, sourcePaths) => importPaths(projectId, category, sourcePaths))
+ipcMain.handle('file:import-clipboard', (_event, projectId, category, items) => importClipboardItems(projectId, category, items))
 ipcMain.handle('file:open', async (_event, projectId, fileId) => { const { filePath } = await findFile(projectId, fileId); const error = await shell.openPath(filePath); if (error) throw new Error(error) })
 ipcMain.handle('file:reveal', async (_event, projectId, fileId) => { const { filePath } = await findFile(projectId, fileId); shell.showItemInFolder(filePath) })
+ipcMain.handle('file:copy', async (_event, projectId, fileId) => {
+  const { filePath } = await findFile(projectId, fileId)
+  if (!(await exists(filePath))) throw new Error('源文件不存在')
+  clipboard.clear()
+  if (process.platform === 'win32') clipboard.writeBuffer('FileNameW', Buffer.from(`${filePath}\0`, 'ucs2'))
+  else clipboard.writeText(filePath)
+  return path.basename(filePath)
+})
 ipcMain.handle('file:delete', async (_event, projectId, fileId) => {
   const { store, project, file, filePath } = await findFile(projectId, fileId)
   if (await exists(filePath)) await shell.trashItem(filePath)

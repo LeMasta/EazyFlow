@@ -59,9 +59,11 @@ declare global {
       importFiles: (projectId: string, category: FileCategory) => Promise<ProjectFile[]>
       importFolder: (projectId: string, category: FileCategory) => Promise<ProjectFile[]>
       importDroppedFiles: (projectId: string, category: FileCategory, files: File[]) => Promise<ProjectFile[]>
+      importClipboardFiles: (projectId: string, category: FileCategory, files: File[]) => Promise<ProjectFile[]>
       filePreviewUrl: (projectId: string, fileId: string) => string
       openFile: (projectId: string, fileId: string) => Promise<void>
       revealFile: (projectId: string, fileId: string) => Promise<void>
+      copyFile: (projectId: string, fileId: string) => Promise<string>
       deleteFile: (projectId: string, fileId: string) => Promise<void>
       selectStorageRoot: () => Promise<string | undefined>
       revealStorageRoot: () => Promise<void>

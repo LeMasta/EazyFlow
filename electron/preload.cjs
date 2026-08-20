@@ -10,9 +10,14 @@ contextBridge.exposeInMainWorld('eazyflow', {
   importFiles: (projectId, category) => ipcRenderer.invoke('file:import', projectId, category),
   importFolder: (projectId, category) => ipcRenderer.invoke('file:import-folder', projectId, category),
   importDroppedFiles: (projectId, category, files) => ipcRenderer.invoke('file:import-paths', projectId, category, files.map((file) => webUtils.getPathForFile(file))),
+  importClipboardFiles: async (projectId, category, files) => ipcRenderer.invoke('file:import-clipboard', projectId, category, await Promise.all(files.map(async (file) => {
+    const filePath = webUtils.getPathForFile(file)
+    return filePath ? { path: filePath } : { name: file.name, type: file.type, data: Buffer.from(await file.arrayBuffer()) }
+  }))),
   filePreviewUrl: (projectId, fileId) => `eazyflow-file://${projectId}/${fileId}`,
   openFile: (projectId, fileId) => ipcRenderer.invoke('file:open', projectId, fileId),
   revealFile: (projectId, fileId) => ipcRenderer.invoke('file:reveal', projectId, fileId),
+  copyFile: (projectId, fileId) => ipcRenderer.invoke('file:copy', projectId, fileId),
   deleteFile: (projectId, fileId) => ipcRenderer.invoke('file:delete', projectId, fileId),
   selectStorageRoot: () => ipcRenderer.invoke('storage:select'),
   revealStorageRoot: () => ipcRenderer.invoke('storage:reveal'),

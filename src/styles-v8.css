@@ -1,0 +1,23 @@
+/* v0.8 — native clipboard workflow, project end time and fixed calendar controls */
+.topbar{gap:24px}
+.top-actions{align-items:center;flex-wrap:nowrap}
+.calendar-controls{display:flex;align-items:center;gap:2px;padding:3px;border-radius:10px;background:#e9e7e1;flex:none}
+.topbar .view-switch{flex:none;padding:0;background:transparent}
+.topbar .schedule-button{flex:none;border:0;border-left:1px solid #d5d1c8;border-radius:0 8px 8px 0;background:transparent;height:34px}
+.topbar .schedule-button:hover{background:#fff;color:#292823}
+.topbar+.hour-card,.topbar+.month-card{margin-top:22px}
+
+.library-project{grid-template-columns:10px minmax(210px,1fr) 140px 155px 155px 78px;gap:14px}
+
+.clipboard-notice{display:flex;align-items:center;gap:7px;margin:14px 0 -4px;padding:9px 11px;border-radius:9px;background:#edf6ef;color:#477254;font-size:11px}
+.clipboard-notice svg{width:16px;height:16px}
+.file-row.selected-file,.image-card.selected-file{background:#f2effb;border-color:#9079d8;box-shadow:0 0 0 2px #7557d926}
+.file-row.selected-file{transform:none}
+.compact-drop{padding:0 14px;text-align:center}
+
+@media(max-width:1250px){
+  .top-actions .search{width:170px}
+  .topbar .view-switch button{padding-inline:10px}
+  .topbar .schedule-button{padding-inline:9px}
+  .library-project{grid-template-columns:10px minmax(180px,1fr) 125px 140px 140px 72px;gap:10px}
+}
