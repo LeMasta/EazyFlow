@@ -2,6 +2,7 @@ const { contextBridge, ipcRenderer, webUtils } = require('electron')
 
 contextBridge.exposeInMainWorld('eazyflow', {
   getSnapshot: () => ipcRenderer.invoke('store:get'),
+  getAppVersion: () => ipcRenderer.invoke('app:version'),
   createProject: (project) => ipcRenderer.invoke('project:create', project),
   updateProject: (id, patch) => ipcRenderer.invoke('project:update', id, patch),
   deleteProject: (id) => ipcRenderer.invoke('project:delete', id),

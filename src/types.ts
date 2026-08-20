@@ -51,6 +51,7 @@ declare global {
   interface Window {
     eazyflow: {
       getSnapshot: () => Promise<StoreSnapshot>
+      getAppVersion: () => Promise<string>
       createProject: (project: Omit<Project, 'id' | 'createdAt' | 'files'>) => Promise<Project>
       updateProject: (id: string, patch: Partial<Project>) => Promise<Project>
       deleteProject: (id: string) => Promise<void>
