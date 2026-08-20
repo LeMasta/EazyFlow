@@ -23,6 +23,7 @@ export interface Project {
   startAt: string
   dueAt?: string
   completedAt?: string
+  predecessorId?: string
   lastOpenedAt?: string
   folderName?: string
   createdAt: string

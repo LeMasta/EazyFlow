@@ -1,0 +1,25 @@
+/* v0.8.2 — sidebar branding and project continuation relationships */
+body{background:#1e2025}
+.app-shell{padding-top:env(titlebar-area-height,38px);background:#1e2025}
+.sidebar{padding-top:18px}
+.brand{padding:0 8px 20px;gap:11px;font-size:21px;letter-spacing:-.02em}
+.brand-mark{width:36px;height:36px;border-radius:11px;font-size:19px;font-weight:800;box-shadow:0 5px 16px #0003}
+.sidebar>.primary.wide{margin-top:0;margin-bottom:22px}
+main{border-radius:12px 0 0 0}
+
+.continued-row .row-project{background:linear-gradient(90deg,#faf8ff,#fff)}
+.continued-row .row-project small{color:#7768a2}
+.continued-bubble{background:repeating-linear-gradient(135deg,color-mix(in srgb,var(--bubble) 18%,white) 0 10px,color-mix(in srgb,var(--bubble) 10%,white) 10px 20px);box-shadow:inset 5px 0 0 color-mix(in srgb,var(--bubble) 38%,white),0 3px 10px #1f1b1814}
+.continued-pill{outline:1px dashed color-mix(in srgb,var(--bubble) 52%,white);outline-offset:-2px;background:repeating-linear-gradient(135deg,color-mix(in srgb,var(--bubble) 18%,white) 0 7px,color-mix(in srgb,var(--bubble) 9%,white) 7px 14px)}
+.continued-pill em{color:#675b8d;font-weight:700}
+.continued-project{background:linear-gradient(90deg,#fcfbff,#fff 45%)}
+.relation-inline{display:inline-flex;align-items:center;gap:3px;margin-right:8px;color:#6f5f9d;font-weight:700}.relation-inline svg{width:11px;height:11px}
+.continued-hero{background:linear-gradient(135deg,#fcfbff,#fff);border-color:#d9d1ed}
+.project-relation{display:flex;align-items:center;gap:5px;width:max-content;margin-top:8px;border:0;border-radius:7px;background:#f0ecfa;color:#68558f;padding:5px 8px;font-size:10px;font-weight:700}
+.project-relation:hover{background:#e8e0f8;color:#503a80}.project-relation svg{width:13px;height:13px}
+
+.modal{max-height:calc(100vh - 56px);overflow-y:auto}
+.modal .relation-field>span{display:flex;align-items:center;gap:6px}.modal .relation-field>span svg{width:15px;height:15px;color:#7557d9}
+.modal .relation-field select,.editor-modal select{width:100%;min-height:42px;border:1px solid var(--line);border-radius:9px;padding:9px 34px 9px 11px;outline:0;background:#fbfaf8;color:#3d3a34}
+.modal .relation-field select:focus,.editor-modal select:focus{border-color:#8f8a7f;box-shadow:0 0 0 3px #ddd9cf66}
+.modal .relation-field small{font-weight:400;color:#99958f;line-height:1.4}
