@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('eazyflow', {
   createProject: (project) => ipcRenderer.invoke('project:create', project),
   updateProject: (id, patch) => ipcRenderer.invoke('project:update', id, patch),
   deleteProject: (id) => ipcRenderer.invoke('project:delete', id),
+  touchProject: (id) => ipcRenderer.invoke('project:touch', id),
   updateSettings: (settings) => ipcRenderer.invoke('settings:update', settings),
   importFiles: (projectId, category) => ipcRenderer.invoke('file:import', projectId, category),
   importFolder: (projectId, category) => ipcRenderer.invoke('file:import-folder', projectId, category),
