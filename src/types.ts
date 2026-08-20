@@ -23,6 +23,7 @@ export interface Project {
   startAt: string
   dueAt?: string
   completedAt?: string
+  lastOpenedAt?: string
   folderName?: string
   createdAt: string
   files: ProjectFile[]
@@ -41,6 +42,7 @@ export interface WorkSettings {
   irregularRest: boolean
   restDates: string[]
   dayOverrides: Record<string, DayOverride>
+  recentProjectDays: number
 }
 
 export interface StoreSnapshot { projects: Project[]; settings: WorkSettings | null; storageRoot: string }
@@ -52,6 +54,7 @@ declare global {
       createProject: (project: Omit<Project, 'id' | 'createdAt' | 'files'>) => Promise<Project>
       updateProject: (id: string, patch: Partial<Project>) => Promise<Project>
       deleteProject: (id: string) => Promise<void>
+      touchProject: (id: string) => Promise<void>
       updateSettings: (settings: WorkSettings) => Promise<WorkSettings>
       importFiles: (projectId: string, category: FileCategory) => Promise<ProjectFile[]>
       importFolder: (projectId: string, category: FileCategory) => Promise<ProjectFile[]>

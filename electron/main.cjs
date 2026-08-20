@@ -28,10 +28,9 @@ async function uniqueName(parent, desired, excludedPath) {
   while (await exists(path.join(parent, candidate)) && path.resolve(path.join(parent, candidate)) !== path.resolve(excludedPath || '')) candidate = `${parsed.name} (${index++})${parsed.ext}`
   return candidate
 }
-async function ensureProjectFolders(storageRoot, folderName) {
+async function ensureProjectFolder(storageRoot, folderName) {
   const root = path.join(storageRoot, folderName)
   await fs.mkdir(root, { recursive: true })
-  await Promise.all(Object.values(categoryFolders).map((name) => fs.mkdir(path.join(root, name), { recursive: true })))
 }
 function itemPath(store, project, file) {
   return path.join(store.storageRoot || paths().files, project.folderName, categoryFolders[file.category], file.storedName || file.name)
@@ -52,7 +51,7 @@ async function readStore() {
   await fs.mkdir(data.storageRoot, { recursive: true })
   if (data.settings) data.settings = {
     weekPreset: '双休', workDays: [1, 2, 3, 4, 5], bigWeekStartsThisWeek: true,
-    publicHolidays: true, makeupWorkdays: true, irregularRest: false, restDates: [], dayOverrides: {}, ...data.settings
+    publicHolidays: true, makeupWorkdays: true, irregularRest: false, restDates: [], dayOverrides: {}, recentProjectDays: 3, ...data.settings
   }
   let migrated = false
   const reservedFolders = new Set()
@@ -67,7 +66,7 @@ async function readStore() {
       project.folderName = folder; migrated = true
     }
     reservedFolders.add(project.folderName)
-    await ensureProjectFolders(data.storageRoot, project.folderName)
+    await ensureProjectFolder(data.storageRoot, project.folderName)
     project.files ||= []
     for (const file of project.files) {
       if (file.storedName) { file.kind ||= 'file'; continue }
@@ -75,11 +74,12 @@ async function readStore() {
       const legacyCandidates = [path.join(p.files, project.id, file.category, `${file.id}${file.extension || ''}`), path.join(data.storageRoot, project.id, file.category, `${file.id}${file.extension || ''}`)]
       let source
       for (const candidate of legacyCandidates) if (await exists(candidate)) { source = candidate; break }
-      if (source) { await fs.copyFile(source, path.join(categoryRoot, storedName)); await fs.unlink(source) }
+      if (source) { await fs.mkdir(categoryRoot, { recursive: true }); await fs.copyFile(source, path.join(categoryRoot, storedName)); await fs.unlink(source) }
       file.storedName = storedName; file.kind = 'file'; migrated = true
     }
     for (const category of categories) await fs.rmdir(path.join(p.files, project.id, category)).catch(() => {})
     await fs.rmdir(path.join(p.files, project.id)).catch(() => {})
+    for (const folder of Object.values(categoryFolders)) await fs.rmdir(path.join(data.storageRoot, project.folderName, folder)).catch(() => {})
   }
   if (migrated || !(await exists(p.store))) await writeStore(data)
   return data
@@ -113,7 +113,12 @@ ipcMain.handle('store:get', readStore)
 ipcMain.handle('project:create', async (_event, input) => {
   const store = await readStore(), folderName = await uniqueName(store.storageRoot, input.name)
   const project = { ...input, id: crypto.randomUUID(), folderName, createdAt: new Date().toISOString(), files: [] }
-  await ensureProjectFolders(store.storageRoot, folderName); store.projects.push(project); await writeStore(store); return project
+  await ensureProjectFolder(store.storageRoot, folderName); store.projects.push(project); await writeStore(store); return project
+})
+ipcMain.handle('project:touch', async (_event, id) => {
+  const store = await readStore(), project = store.projects.find((p) => p.id === id)
+  if (!project) throw new Error('项目不存在')
+  project.lastOpenedAt = new Date().toISOString(); await writeStore(store)
 })
 ipcMain.handle('project:update', async (_event, id, patch) => {
   const store = await readStore(), index = store.projects.findIndex((p) => p.id === id)
@@ -169,9 +174,11 @@ ipcMain.handle('file:import-paths', (_event, projectId, category, sourcePaths) =
 ipcMain.handle('file:open', async (_event, projectId, fileId) => { const { filePath } = await findFile(projectId, fileId); const error = await shell.openPath(filePath); if (error) throw new Error(error) })
 ipcMain.handle('file:reveal', async (_event, projectId, fileId) => { const { filePath } = await findFile(projectId, fileId); shell.showItemInFolder(filePath) })
 ipcMain.handle('file:delete', async (_event, projectId, fileId) => {
-  const { store, project, filePath } = await findFile(projectId, fileId)
+  const { store, project, file, filePath } = await findFile(projectId, fileId)
   if (await exists(filePath)) await shell.trashItem(filePath)
   project.files = project.files.filter((f) => f.id !== fileId); await writeStore(store)
+  const categoryRoot = path.join(store.storageRoot, project.folderName, categoryFolders[file.category])
+  await fs.rmdir(categoryRoot).catch(() => {})
 })
 ipcMain.handle('storage:select', async () => {
   const store = await readStore(), result = await dialog.showOpenDialog(mainWindow, { title: '选择 EazyFlow 项目存储位置', defaultPath: store.storageRoot, properties: ['openDirectory', 'createDirectory'] })
@@ -184,7 +191,7 @@ ipcMain.handle('storage:select', async () => {
   const oldFolders = []
   for (const project of store.projects) {
     const source = path.join(oldRoot, project.folderName), nextFolder = await uniqueName(nextRoot, project.folderName), target = path.join(nextRoot, nextFolder)
-    if (await exists(source)) await fs.cp(source, target, { recursive: true, errorOnExist: true }); else await ensureProjectFolders(nextRoot, nextFolder)
+    if (await exists(source)) await fs.cp(source, target, { recursive: true, errorOnExist: true }); else await ensureProjectFolder(nextRoot, nextFolder)
     oldFolders.push(source); project.folderName = nextFolder
   }
   store.storageRoot = nextRoot; await writeStore(store)
