@@ -91,7 +91,7 @@ async function findFile(projectId, fileId) {
 }
 
 function createWindow() {
-  mainWindow = new BrowserWindow({ width: 1440, height: 920, minWidth: 1080, minHeight: 720, backgroundColor: '#f5f5f1', title: 'EazyFlow', autoHideMenuBar: true, webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false } })
+  mainWindow = new BrowserWindow({ width: 1440, height: 920, minWidth: 1080, minHeight: 720, backgroundColor: '#1e2025', title: 'EazyFlow', titleBarStyle: 'hidden', titleBarOverlay: { color: '#1e2025', symbolColor: '#f7f5ef', height: 38 }, autoHideMenuBar: true, webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false } })
   mainWindow.setMenuBarVisibility(false)
   if (isDev) mainWindow.loadURL(process.env.EAZYFLOW_DEV_URL)
   else mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'))
@@ -113,6 +113,10 @@ ipcMain.handle('store:get', readStore)
 ipcMain.handle('app:version', () => app.getVersion())
 ipcMain.handle('project:create', async (_event, input) => {
   const store = await readStore(), folderName = await uniqueName(store.storageRoot, input.name)
+  if (input.predecessorId) {
+    const predecessor = store.projects.find((p) => p.id === input.predecessorId)
+    if (!predecessor || new Date(predecessor.startAt) >= new Date(input.startAt)) throw new Error('关联项目必须是开始时间更早的已有项目')
+  }
   const project = { ...input, id: crypto.randomUUID(), folderName, createdAt: new Date().toISOString(), files: [] }
   await ensureProjectFolder(store.storageRoot, folderName); store.projects.push(project); await writeStore(store); return project
 })
@@ -125,6 +129,15 @@ ipcMain.handle('project:update', async (_event, id, patch) => {
   const store = await readStore(), index = store.projects.findIndex((p) => p.id === id)
   if (index < 0) throw new Error('项目不存在')
   const project = store.projects[index], safe = { ...patch }; delete safe.id; delete safe.files; delete safe.createdAt; delete safe.folderName
+  if (safe.predecessorId) {
+    const predecessor = store.projects.find((p) => p.id === safe.predecessorId), nextStart = safe.startAt || project.startAt
+    if (!predecessor || predecessor.id === project.id || new Date(predecessor.startAt) >= new Date(nextStart)) throw new Error('关联项目必须是开始时间更早的已有项目')
+    let cursor = predecessor
+    while (cursor?.predecessorId) {
+      if (cursor.predecessorId === project.id) throw new Error('项目关联不能形成循环')
+      cursor = store.projects.find((p) => p.id === cursor.predecessorId)
+    }
+  }
   if (typeof safe.name === 'string' && safe.name.trim() && safe.name !== project.name) {
     const oldPath = path.join(store.storageRoot, project.folderName), nextFolder = await uniqueName(store.storageRoot, safe.name, oldPath)
     if (nextFolder !== project.folderName) await fs.rename(oldPath, path.join(store.storageRoot, nextFolder))
@@ -137,7 +150,9 @@ ipcMain.handle('project:delete', async (_event, id) => {
   if (!project) throw new Error('项目不存在')
   const folder = path.join(store.storageRoot, project.folderName)
   if (await exists(folder)) await shell.trashItem(folder)
-  store.projects = store.projects.filter((p) => p.id !== id); await writeStore(store)
+  store.projects = store.projects.filter((p) => p.id !== id)
+  for (const item of store.projects) if (item.predecessorId === id) delete item.predecessorId
+  await writeStore(store)
 })
 ipcMain.handle('settings:update', async (_event, settings) => {
   const values = ['startHour', 'endHour', 'breakStart', 'breakEnd'].map((key) => Number(settings[key]))
