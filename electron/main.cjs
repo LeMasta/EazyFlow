@@ -110,6 +110,7 @@ app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(
 app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow() })
 
 ipcMain.handle('store:get', readStore)
+ipcMain.handle('app:version', () => app.getVersion())
 ipcMain.handle('project:create', async (_event, input) => {
   const store = await readStore(), folderName = await uniqueName(store.storageRoot, input.name)
   const project = { ...input, id: crypto.randomUUID(), folderName, createdAt: new Date().toISOString(), files: [] }
