@@ -1,0 +1,4 @@
+/* v0.8.3 — file rename and disk synchronization */
+.file-rename-input{display:block;width:100%;min-width:0;height:27px;border:1px solid #8d7acb;border-radius:6px;background:#fff;padding:3px 7px;color:#292723;font-size:11px;font-weight:650;outline:0;box-shadow:0 0 0 3px #7557d91c}
+.image-caption .file-rename-input{margin-bottom:2px}
+.file-actions button[title="重命名"]:hover{color:#7557d9;background:#eee9fb}
