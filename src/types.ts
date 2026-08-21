@@ -66,6 +66,7 @@ declare global {
       openFile: (projectId: string, fileId: string) => Promise<void>
       revealFile: (projectId: string, fileId: string) => Promise<void>
       copyFile: (projectId: string, fileId: string) => Promise<string>
+      renameFile: (projectId: string, fileId: string, name: string) => Promise<ProjectFile>
       deleteFile: (projectId: string, fileId: string) => Promise<void>
       selectStorageRoot: () => Promise<string | undefined>
       revealStorageRoot: () => Promise<void>
