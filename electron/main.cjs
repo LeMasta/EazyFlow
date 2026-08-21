@@ -22,10 +22,18 @@ function safeName(value, fallback = '未命名项目') {
   if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(name)) name = `_${name}`
   return name
 }
+function validItemName(value) {
+  const name = String(value || '').trim()
+  if (!name || name === '.' || name === '..') throw new Error('文件名不能为空')
+  if (name.length > 255 || /[<>:"/\\|?*\u0000-\u001f]/.test(name) || /[. ]$/.test(name)) throw new Error('文件名包含 Windows 不支持的字符')
+  if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(name)) throw new Error('该名称是 Windows 保留名称')
+  return name
+}
 async function uniqueName(parent, desired, excludedPath) {
   const parsed = path.parse(safeName(desired, '未命名'))
   let candidate = `${parsed.name}${parsed.ext}`, index = 2
-  while (await exists(path.join(parent, candidate)) && path.resolve(path.join(parent, candidate)) !== path.resolve(excludedPath || '')) candidate = `${parsed.name} (${index++})${parsed.ext}`
+  const samePath = (left, right) => process.platform === 'win32' ? path.resolve(left).toLowerCase() === path.resolve(right).toLowerCase() : path.resolve(left) === path.resolve(right)
+  while (await exists(path.join(parent, candidate)) && !samePath(path.join(parent, candidate), excludedPath || '')) candidate = `${parsed.name} (${index++})${parsed.ext}`
   return candidate
 }
 async function ensureProjectFolder(storageRoot, folderName) {
@@ -34,6 +42,48 @@ async function ensureProjectFolder(storageRoot, folderName) {
 }
 function itemPath(store, project, file) {
   return path.join(store.storageRoot || paths().files, project.folderName, categoryFolders[file.category], file.storedName || file.name)
+}
+async function syncProjectFiles(store, project) {
+  let changed = false
+  const synchronized = []
+  for (const category of categories) {
+    const categoryRoot = path.join(store.storageRoot, project.folderName, categoryFolders[category])
+    const diskItems = []
+    if (await exists(categoryRoot)) {
+      for (const entry of await fs.readdir(categoryRoot, { withFileTypes: true })) {
+        if (!entry.isFile() && !entry.isDirectory()) continue
+        const stat = await fs.stat(path.join(categoryRoot, entry.name)).catch(() => null)
+        if (!stat) continue
+        diskItems.push({ name: entry.name, kind: entry.isDirectory() ? 'folder' : 'file', size: entry.isFile() ? stat.size : 0, createdAt: stat.birthtime.toISOString() })
+      }
+    }
+    const records = project.files.filter((file) => file.category === category)
+    const unused = [...diskItems], missing = []
+    for (const file of records) {
+      const index = unused.findIndex((item) => item.name === (file.storedName || file.name))
+      if (index >= 0) {
+        const item = unused.splice(index, 1)[0]
+        synchronized.push({ ...file, name: item.name, storedName: item.name, kind: item.kind, size: item.size, extension: item.kind === 'file' ? path.extname(item.name) : '' })
+      } else missing.push(file)
+    }
+    for (const file of missing) {
+      let index = unused.findIndex((item) => item.kind === (file.kind || 'file') && (item.kind === 'folder' || item.size === file.size) && path.extname(item.name).toLowerCase() === (file.extension || '').toLowerCase())
+      if (index < 0) index = unused.findIndex((item) => item.kind === (file.kind || 'file') && (item.kind === 'folder' || item.size === file.size))
+      if (index < 0 && missing.length === 1 && unused.length === 1) index = 0
+      if (index < 0) { changed = true; continue }
+      const item = unused.splice(index, 1)[0]
+      synchronized.push({ ...file, name: item.name, storedName: item.name, kind: item.kind, size: item.size, extension: item.kind === 'file' ? path.extname(item.name) : '' })
+      changed = true
+    }
+    for (const item of unused) {
+      synchronized.push({ id: crypto.randomUUID(), name: item.name, storedName: item.name, kind: item.kind, category, size: item.size, extension: item.kind === 'file' ? path.extname(item.name) : '', createdAt: item.createdAt })
+      changed = true
+    }
+  }
+  const next = [...project.files.filter((file) => !categories.has(file.category)), ...synchronized]
+  if (!changed && JSON.stringify(next) !== JSON.stringify(project.files)) changed = true
+  project.files = next
+  return changed
 }
 async function writeStore(data) {
   const p = paths(); await fs.mkdir(p.root, { recursive: true })
@@ -80,6 +130,7 @@ async function readStore() {
     for (const category of categories) await fs.rmdir(path.join(p.files, project.id, category)).catch(() => {})
     await fs.rmdir(path.join(p.files, project.id)).catch(() => {})
     for (const folder of Object.values(categoryFolders)) await fs.rmdir(path.join(data.storageRoot, project.folderName, folder)).catch(() => {})
+    if (await syncProjectFiles(data, project)) migrated = true
   }
   if (migrated || !(await exists(p.store))) await writeStore(data)
   return data
@@ -218,6 +269,16 @@ ipcMain.handle('file:copy', async (_event, projectId, fileId) => {
   if (process.platform === 'win32') clipboard.writeBuffer('FileNameW', Buffer.from(`${filePath}\0`, 'ucs2'))
   else clipboard.writeText(filePath)
   return path.basename(filePath)
+})
+ipcMain.handle('file:rename', async (_event, projectId, fileId, requestedName) => {
+  const { store, file, filePath } = await findFile(projectId, fileId)
+  const name = validItemName(requestedName)
+  if (name === file.storedName) return file
+  const storedName = await uniqueName(path.dirname(filePath), name, filePath)
+  await fs.rename(filePath, path.join(path.dirname(filePath), storedName))
+  file.name = storedName; file.storedName = storedName; file.extension = file.kind === 'folder' ? '' : path.extname(storedName)
+  await writeStore(store)
+  return file
 })
 ipcMain.handle('file:delete', async (_event, projectId, fileId) => {
   const { store, project, file, filePath } = await findFile(projectId, fileId)

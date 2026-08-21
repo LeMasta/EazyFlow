@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('eazyflow', {
   openFile: (projectId, fileId) => ipcRenderer.invoke('file:open', projectId, fileId),
   revealFile: (projectId, fileId) => ipcRenderer.invoke('file:reveal', projectId, fileId),
   copyFile: (projectId, fileId) => ipcRenderer.invoke('file:copy', projectId, fileId),
+  renameFile: (projectId, fileId, name) => ipcRenderer.invoke('file:rename', projectId, fileId, name),
   deleteFile: (projectId, fileId) => ipcRenderer.invoke('file:delete', projectId, fileId),
   selectStorageRoot: () => ipcRenderer.invoke('storage:select'),
   revealStorageRoot: () => ipcRenderer.invoke('storage:reveal'),
