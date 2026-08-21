@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { addDays, addMonths, differenceInCalendarWeeks, eachDayOfInterval, endOfDay, endOfMonth, endOfWeek, format, isSameDay, isSameMonth, isWithinInterval, parseISO, startOfDay, startOfMonth, startOfWeek, subMonths } from 'date-fns'
 import { zhCN } from 'date-fns/locale'
-import { CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Clock3, Copy, Edit3, ExternalLink, File as FileIcon, FileCheck2, FileInput, FolderOpen, LayoutGrid, Library, Link2, MoreHorizontal, Plus, RefreshCw, Search, Settings2, Trash2, Upload, X, ZoomIn, ZoomOut } from 'lucide-react'
+import { CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Clock3, Copy, Edit3, ExternalLink, File as FileIcon, FileCheck2, FileInput, FolderOpen, LayoutGrid, Library, Link2, Maximize2, MoreHorizontal, Plus, RefreshCw, RotateCcw, RotateCw, Search, Settings2, Trash2, Upload, X, ZoomIn, ZoomOut } from 'lucide-react'
 import { getFestival, isAdditionalWorkday } from 'chinese-workday'
 import type { DayOverride, DisplayStatus, FileCategory, Project, ProjectFile, ProjectStatus, WorkSettings } from './types'
 
@@ -85,6 +85,7 @@ function App() {
   const showContext=(e:React.MouseEvent,p:Project)=>{e.preventDefault();setContext({x:e.clientX,y:e.clientY,project:p})}
   const setDayOverride=async(date:Date,value?:DayOverride)=>{if(!settings)return;const key=dateKey(date),next={...settings.dayOverrides};if(value)next[key]=value;else delete next[key];const updated={...settings,dayOverrides:next};await window.eazyflow.updateSettings(updated);setSettings(updated);setDayContext(null)}
   return <div className="app-shell">
+    <div className="window-drag-region" aria-hidden="true"/>
     <aside className="sidebar">
       <div className="brand"><span className="brand-mark">E</span><span>EazyFlow</span></div>
       <button className="primary wide" onClick={()=>setCreating(true)}><Plus/>新建项目</button>
@@ -163,7 +164,7 @@ function ProjectFiles({project,onChanged}:{project:Project;onChanged:()=>void}){
 
 const imageExtensions=new Set(['.png','.jpg','.jpeg','.gif','.webp','.bmp','.svg'])
 function FileSection({projectId,category,files,notice,onImport,onImportFolder,onDrop,onPaste,onCopy,onRename,onOpen,onReveal,onDelete}:{projectId:string;category:typeof categories[number];files:ProjectFile[];notice:string;onImport:()=>void;onImportFolder:()=>void;onDrop:(files:File[])=>void;onPaste:(files:File[])=>void;onCopy:(f:ProjectFile)=>void;onRename:(f:ProjectFile,name:string)=>void;onOpen:(f:ProjectFile)=>void;onReveal:(f:ProjectFile)=>void;onDelete:(f:ProjectFile)=>void}){
-  const Icon=category.icon,[dragging,setDragging]=useState(false),[selectedId,setSelectedId]=useState<string|null>(null),[renamingId,setRenamingId]=useState<string|null>(null),images=files.filter(f=>f.kind!=='folder'&&imageExtensions.has(f.extension.toLowerCase())),documents=files.filter(f=>f.kind==='folder'||!imageExtensions.has(f.extension.toLowerCase()))
+  const Icon=category.icon,[dragging,setDragging]=useState(false),[selectedId,setSelectedId]=useState<string|null>(null),[renamingId,setRenamingId]=useState<string|null>(null),[previewId,setPreviewId]=useState<string|null>(null),images=files.filter(f=>f.kind!=='folder'&&imageExtensions.has(f.extension.toLowerCase())),documents=files.filter(f=>f.kind==='folder'||!imageExtensions.has(f.extension.toLowerCase())),preview=images.find(f=>f.id===previewId)
   useEffect(()=>{
     const editable=(target:EventTarget|null)=>target instanceof HTMLElement&&(target.matches('input, textarea, select, [contenteditable="true"]')||Boolean(target.closest('[contenteditable="true"]')))
     const paste=(event:ClipboardEvent)=>{if(editable(event.target))return;const pasted=Array.from(event.clipboardData?.files||[]);if(pasted.length){event.preventDefault();onPaste(pasted)}}
@@ -180,10 +181,11 @@ function FileSection({projectId,category,files,notice,onImport,onImportFolder,on
     {notice&&<div className="clipboard-notice"><CheckCircle2/>{notice}</div>}
     {files.length===0?<div className="drop-hint material-empty"><Upload/><b>{dragging?'松开即可复制到项目':'拖入或按 Ctrl+V 粘贴文件、文件夹和截图'}</b><span>也可以使用上方按钮选择，内容会完整复制一份保存在项目内</span></div>:<>
       <div className="compact-drop"><Upload/>可拖入或按 Ctrl+V 粘贴；单击选中后按 Ctrl+C 可复制到资源管理器</div>
-      {images.length>0&&<div className="image-gallery">{images.map(f=><article className={`image-card ${selectedId===f.id?'selected-file':''}`} key={f.id} onClick={e=>choose(e,f)} onDoubleClick={()=>renamingId!==f.id&&onOpen(f)} title="单击选中，双击打开原图"><img src={window.eazyflow.filePreviewUrl(projectId,f.id)} alt={f.name}/><div className="image-caption"><span>{fileName(f)}<small>{bytes(f.size)}</small></span><FileActions file={f} onRename={()=>setRenamingId(f.id)} onCopy={onCopy} onOpen={onOpen} onReveal={onReveal} onDelete={onDelete}/></div></article>)}</div>}
+      {images.length>0&&<div className="image-gallery">{images.map(f=><article className={`image-card ${selectedId===f.id?'selected-file':''}`} key={f.id} onClick={e=>choose(e,f)} onDoubleClick={()=>renamingId!==f.id&&setPreviewId(f.id)} title="单击选中，双击在 EazyFlow 内预览"><img src={window.eazyflow.filePreviewUrl(projectId,f.id)} alt={f.name}/><div className="image-caption"><span>{fileName(f)}<small>{bytes(f.size)}</small></span><FileActions file={f} onRename={()=>setRenamingId(f.id)} onCopy={onCopy} onOpen={onOpen} onReveal={onReveal} onDelete={onDelete}/></div></article>)}</div>}
       {documents.length>0&&<div className="file-list document-list">{documents.map(f=><div className={`file-row ${f.kind==='folder'?'folder-row':''} ${selectedId===f.id?'selected-file':''}`} key={f.id} onClick={e=>choose(e,f)} onDoubleClick={()=>renamingId!==f.id&&onOpen(f)} title={`单击选中，双击打开${f.kind==='folder'?'文件夹':'文件'}`}><div className="file-type">{f.kind==='folder'?<FolderOpen/>:f.extension.replace('.','').slice(0,4)||'FILE'}</div><div className="file-info">{fileName(f)}<small>{f.kind==='folder'?'文件夹 · 双击打开':`${bytes(f.size)} · 双击打开`}</small></div><FileActions file={f} onRename={()=>setRenamingId(f.id)} onCopy={onCopy} onOpen={onOpen} onReveal={onReveal} onDelete={onDelete}/></div>)}</div>}
     </>}
     {dragging&&<div className="drop-overlay"><Upload/>复制到“{category.label}”</div>}
+    {preview&&<ImagePreview projectId={projectId} file={preview} onClose={()=>setPreviewId(null)} onOpen={()=>onOpen(preview)} onReveal={()=>onReveal(preview)}/>}
   </section>
 }
 
@@ -195,6 +197,29 @@ function RenameInput({file,onSave,onCancel}:{file:ProjectFile;onSave:(name:strin
 
 function FileActions({file,onRename,onCopy,onOpen,onReveal,onDelete}:{file:ProjectFile;onRename:()=>void;onCopy:(file:ProjectFile)=>void;onOpen:(file:ProjectFile)=>void;onReveal:(file:ProjectFile)=>void;onDelete:(file:ProjectFile)=>void}){
   return <div className="file-actions"><button title="重命名" onClick={e=>{e.stopPropagation();onRename()}}><Edit3/></button><button title="复制到剪贴板" onClick={e=>{e.stopPropagation();onCopy(file)}}><Copy/></button><button title={`打开${file.kind==='folder'?'文件夹':'文件'}`} onClick={e=>{e.stopPropagation();onOpen(file)}}><ExternalLink/></button><button title="打开所在位置" onClick={e=>{e.stopPropagation();onReveal(file)}}><FolderOpen/></button><button className="danger" title="移入回收站" onClick={e=>{e.stopPropagation();onDelete(file)}}><Trash2/></button></div>
+}
+
+function ImagePreview({projectId,file,onClose,onOpen,onReveal}:{projectId:string;file:ProjectFile;onClose:()=>void;onOpen:()=>void;onReveal:()=>void}){
+  const [zoom,setZoom]=useState(1),[rotation,setRotation]=useState(0),[actual,setActual]=useState(false),[offset,setOffset]=useState({x:0,y:0}),drag=useRef<{x:number;y:number;left:number;top:number}|null>(null)
+  const changeZoom=(delta:number)=>setZoom(value=>Math.min(4,Math.max(.25,Number((value+delta).toFixed(2)))))
+  const fit=()=>{setZoom(1);setRotation(0);setActual(false);setOffset({x:0,y:0})}
+  const original=()=>{setZoom(1);setActual(true);setOffset({x:0,y:0})}
+  useEffect(()=>{const key=(event:KeyboardEvent)=>{if(event.key==='Escape')onClose();else if(event.key==='+'||event.key==='=')changeZoom(.25);else if(event.key==='-')changeZoom(-.25);else if(event.key==='0')fit()};window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key)},[])
+  return <div className="image-preview-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)onClose()}}>
+    <section className="image-preview-shell" role="dialog" aria-modal="true" aria-label={`预览 ${file.name}`}>
+      <header><div><b>{file.name}</b><small>{bytes(file.size)} · 双击图片切换适应窗口 / 1:1</small></div><div className="preview-file-actions"><button onClick={onReveal}><FolderOpen/>定位文件</button><button onClick={onOpen}><ExternalLink/>系统打开</button><button className="preview-close" onClick={onClose}><X/></button></div></header>
+      <div className="image-preview-toolbar"><button title="向左旋转" onClick={()=>setRotation(value=>value-90)}><RotateCcw/></button><button title="向右旋转" onClick={()=>setRotation(value=>value+90)}><RotateCw/></button><i/><button title="缩小" onClick={()=>changeZoom(-.25)}><ZoomOut/></button><b>{Math.round(zoom*100)}%</b><button title="放大" onClick={()=>changeZoom(.25)}><ZoomIn/></button><i/><button className={!actual?'active':''} onClick={fit}><Maximize2/>适应窗口</button><button className={actual?'active':''} onClick={original}>1:1</button></div>
+      <div className="image-preview-stage"
+        onWheel={e=>{e.preventDefault();changeZoom(e.deltaY<0 ? .25 : -.25)}}
+        onDoubleClick={()=>{if(actual)fit();else original()}}
+        onPointerDown={e=>{e.currentTarget.setPointerCapture(e.pointerId);drag.current={x:e.clientX,y:e.clientY,left:offset.x,top:offset.y}}}
+        onPointerMove={e=>{if(drag.current)setOffset({x:drag.current.left+e.clientX-drag.current.x,y:drag.current.top+e.clientY-drag.current.y})}}
+        onPointerUp={()=>{drag.current=null}}
+        onPointerCancel={()=>{drag.current=null}}>
+        <img className={actual?'actual-size':''} draggable={false} src={window.eazyflow.filePreviewUrl(projectId,file.id)} alt={file.name} style={{transform:`translate(${offset.x}px,${offset.y}px) rotate(${rotation}deg) scale(${zoom})`}}/>
+      </div>
+    </section>
+  </div>
 }
 
 function CreateProject({projects,onClose,onCreated}:{projects:Project[];onClose:()=>void;onCreated:(p:Project)=>void}){
