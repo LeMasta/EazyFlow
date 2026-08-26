@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('eazyflow', {
   getAppVersion: () => ipcRenderer.invoke('app:version'),
   createProject: (project) => ipcRenderer.invoke('project:create', project),
   updateProject: (id, patch) => ipcRenderer.invoke('project:update', id, patch),
+  updateGroup: (id, patch) => ipcRenderer.invoke('group:update', id, patch),
   deleteProject: (id) => ipcRenderer.invoke('project:delete', id),
   touchProject: (id) => ipcRenderer.invoke('project:touch', id),
   updateSettings: (settings) => ipcRenderer.invoke('settings:update', settings),

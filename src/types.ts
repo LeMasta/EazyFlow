@@ -24,10 +24,19 @@ export interface Project {
   dueAt?: string
   completedAt?: string
   predecessorId?: string
+  groupId?: string
   lastOpenedAt?: string
   folderName?: string
   createdAt: string
   files: ProjectFile[]
+}
+
+export interface ProjectGroup {
+  id: string
+  name: string
+  description: string
+  color: string
+  createdAt: string
 }
 
 export interface WorkSettings {
@@ -46,15 +55,16 @@ export interface WorkSettings {
   recentProjectDays: number
 }
 
-export interface StoreSnapshot { projects: Project[]; settings: WorkSettings | null; storageRoot: string }
+export interface StoreSnapshot { projects: Project[]; groups: ProjectGroup[]; settings: WorkSettings | null; storageRoot: string }
 
 declare global {
   interface Window {
     eazyflow: {
       getSnapshot: () => Promise<StoreSnapshot>
       getAppVersion: () => Promise<string>
-      createProject: (project: Omit<Project, 'id' | 'createdAt' | 'files'>) => Promise<Project>
-      updateProject: (id: string, patch: Partial<Project>) => Promise<Project>
+      createProject: (project: Omit<Project, 'id' | 'createdAt' | 'files'> & { groupName?: string; groupColor?: string }) => Promise<Project>
+      updateProject: (id: string, patch: Partial<Project> & { groupName?: string; groupColor?: string }) => Promise<Project>
+      updateGroup: (id: string, patch: Partial<ProjectGroup>) => Promise<ProjectGroup>
       deleteProject: (id: string) => Promise<void>
       touchProject: (id: string) => Promise<void>
       updateSettings: (settings: WorkSettings) => Promise<WorkSettings>

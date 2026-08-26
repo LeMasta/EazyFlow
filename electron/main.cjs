@@ -12,7 +12,7 @@ const categories = new Set(['task', 'reference', 'delivery', 'other'])
 const categoryFolders = { task: '任务文件', reference: '参考文件', delivery: '交付文件', other: '其他' }
 protocol.registerSchemesAsPrivileged([{ scheme: 'eazyflow-file', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }])
 
-const seed = () => ({ projects: [], settings: null, storageRoot: null })
+const seed = () => ({ projects: [], groups: [], settings: null, storageRoot: null })
 function paths() {
   const root = path.join(app.getPath('userData'), 'workspace')
   return { root, store: path.join(root, 'eazyflow.json'), files: path.join(root, 'projects') }
@@ -98,7 +98,7 @@ async function readStore() {
     if (error?.code !== 'ENOENT' && !(error instanceof SyntaxError)) throw error
     data = seed()
   }
-  data.projects ||= []; data.storageRoot ||= p.files
+  data.projects ||= []; data.groups ||= []; data.storageRoot ||= p.files
   await fs.mkdir(data.storageRoot, { recursive: true })
   if (data.settings) data.settings = {
     weekPreset: '双休', workDays: [1, 2, 3, 4, 5], bigWeekStartsThisWeek: true,
@@ -132,6 +132,25 @@ async function readStore() {
     await fs.rmdir(path.join(p.files, project.id)).catch(() => {})
     for (const folder of Object.values(categoryFolders)) await fs.rmdir(path.join(data.storageRoot, project.folderName, folder)).catch(() => {})
     if (await syncProjectFiles(data, project)) migrated = true
+  }
+  const groupIds = new Set(data.groups.map((group) => group.id))
+  for (const project of data.projects) if (project.groupId && !groupIds.has(project.groupId)) { delete project.groupId; migrated = true }
+  let linked = true
+  while (linked) {
+    linked = false
+    for (const project of data.projects) {
+      if (!project.predecessorId) continue
+      const predecessor = data.projects.find((item) => item.id === project.predecessorId)
+      if (!predecessor) continue
+      let groupId = project.groupId || predecessor.groupId
+      if (!groupId) {
+        groupId = crypto.randomUUID()
+        data.groups.push({ id: groupId, name: `${predecessor.name} 项目组`, description: '', color: predecessor.color, createdAt: project.createdAt || new Date().toISOString() })
+        groupIds.add(groupId); migrated = true
+      }
+      if (project.groupId !== groupId) { project.groupId = groupId; linked = true; migrated = true }
+      if (predecessor.groupId !== groupId) { predecessor.groupId = groupId; linked = true; migrated = true }
+    }
   }
   if (migrated || !(await exists(p.store))) await writeStore(data)
   return data
@@ -189,11 +208,21 @@ ipcMain.handle('store:get', readStore)
 ipcMain.handle('app:version', () => app.getVersion())
 ipcMain.handle('project:create', async (_event, input) => {
   const store = await readStore(), folderName = await uniqueName(store.storageRoot, input.name)
+  let groupId
   if (input.predecessorId) {
     const predecessor = store.projects.find((p) => p.id === input.predecessorId)
     if (!predecessor || new Date(predecessor.startAt) >= new Date(input.startAt)) throw new Error('关联项目必须是开始时间更早的已有项目')
+    groupId = predecessor.groupId
+    if (!groupId) {
+      const groupName = String(input.groupName || '').trim()
+      if (!groupName) throw new Error('首次关联项目时需要为关联组命名')
+      groupId = crypto.randomUUID()
+      store.groups.push({ id: groupId, name: groupName, description: '', color: input.groupColor || predecessor.color, createdAt: new Date().toISOString() })
+      predecessor.groupId = groupId
+    }
   }
-  const project = { ...input, id: crypto.randomUUID(), folderName, createdAt: new Date().toISOString(), files: [] }
+  const clean = { ...input }; delete clean.groupName; delete clean.groupColor
+  const project = { ...clean, ...(groupId ? { groupId } : {}), id: crypto.randomUUID(), folderName, createdAt: new Date().toISOString(), files: [] }
   await ensureProjectFolder(store.storageRoot, folderName); store.projects.push(project); await writeStore(store); return project
 })
 ipcMain.handle('project:touch', async (_event, id) => {
@@ -204,7 +233,7 @@ ipcMain.handle('project:touch', async (_event, id) => {
 ipcMain.handle('project:update', async (_event, id, patch) => {
   const store = await readStore(), index = store.projects.findIndex((p) => p.id === id)
   if (index < 0) throw new Error('项目不存在')
-  const project = store.projects[index], safe = { ...patch }; delete safe.id; delete safe.files; delete safe.createdAt; delete safe.folderName
+  const project = store.projects[index], safe = { ...patch }; const groupName = String(safe.groupName || '').trim(), groupColor = safe.groupColor; delete safe.groupName; delete safe.groupColor; delete safe.id; delete safe.files; delete safe.createdAt; delete safe.folderName; delete safe.groupId
   if (safe.predecessorId) {
     const predecessor = store.projects.find((p) => p.id === safe.predecessorId), nextStart = safe.startAt || project.startAt
     if (!predecessor || predecessor.id === project.id || new Date(predecessor.startAt) >= new Date(nextStart)) throw new Error('关联项目必须是开始时间更早的已有项目')
@@ -212,6 +241,15 @@ ipcMain.handle('project:update', async (_event, id, patch) => {
     while (cursor?.predecessorId) {
       if (cursor.predecessorId === project.id) throw new Error('项目关联不能形成循环')
       cursor = store.projects.find((p) => p.id === cursor.predecessorId)
+    }
+    if (predecessor.groupId && project.groupId && predecessor.groupId !== project.groupId) throw new Error('暂不支持合并两个已有的关联组')
+    if (predecessor.groupId) safe.groupId = predecessor.groupId
+    else if (project.groupId) { predecessor.groupId = project.groupId; safe.groupId = project.groupId }
+    else {
+      if (!groupName) throw new Error('首次关联项目时需要为关联组命名')
+      const groupId = crypto.randomUUID()
+      store.groups.push({ id: groupId, name: groupName, description: '', color: groupColor || predecessor.color, createdAt: new Date().toISOString() })
+      predecessor.groupId = groupId; safe.groupId = groupId
     }
   }
   if (typeof safe.name === 'string' && safe.name.trim() && safe.name !== project.name) {
@@ -228,7 +266,21 @@ ipcMain.handle('project:delete', async (_event, id) => {
   if (await exists(folder)) await shell.trashItem(folder)
   store.projects = store.projects.filter((p) => p.id !== id)
   for (const item of store.projects) if (item.predecessorId === id) delete item.predecessorId
+  for (const group of [...store.groups]) {
+    const members = store.projects.filter((item) => item.groupId === group.id)
+    if (members.length < 2) {
+      for (const member of members) delete member.groupId
+      store.groups = store.groups.filter((item) => item.id !== group.id)
+    }
+  }
   await writeStore(store)
+})
+ipcMain.handle('group:update', async (_event, id, patch) => {
+  const store = await readStore(), group = store.groups.find((item) => item.id === id)
+  if (!group) throw new Error('关联组不存在')
+  const safe = { ...patch }; delete safe.id; delete safe.createdAt
+  if (typeof safe.name === 'string') { safe.name = safe.name.trim(); if (!safe.name) throw new Error('关联组名称不能为空') }
+  Object.assign(group, safe); await writeStore(store); return group
 })
 ipcMain.handle('settings:update', async (_event, settings) => {
   const values = ['startHour', 'endHour', 'breakStart', 'breakEnd'].map((key) => Number(settings[key]))
