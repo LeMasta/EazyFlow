@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>EazyFlow 图片查看器</title>
+  <style>
+    *{box-sizing:border-box}html,body{width:100%;height:100%;margin:0;overflow:hidden;font-family:"Segoe UI","Microsoft YaHei",sans-serif;background:#111216;color:#f4f4f5}button{font:inherit}
+    .viewer{height:100%;display:grid;grid-template-rows:42px 1fr;position:relative;background:radial-gradient(circle at 50% 42%,#292b31,#121317 68%)}
+    .titlebar{z-index:5;display:flex;align-items:center;justify-content:space-between;background:#1b1c20e8;border-bottom:1px solid #ffffff10;-webkit-app-region:drag;user-select:none}.file-title{min-width:0;padding-left:15px}.file-title b,.file-title small{display:inline-block;vertical-align:middle}.file-title b{max-width:58vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:600}.file-title small{margin-left:10px;color:#8e9199;font-size:10px}
+    .window-actions{height:100%;display:flex;-webkit-app-region:no-drag}.window-actions button{width:47px;height:100%;border:0;background:transparent;color:#c4c6cc;font-size:16px}.window-actions button:hover{background:#ffffff12;color:#fff}.window-actions .close:hover{background:#c42b35}
+    .stage{min-width:0;min-height:0;overflow:hidden;display:flex;align-items:center;justify-content:center;cursor:grab;touch-action:none;user-select:none}.stage:active{cursor:grabbing}.stage img{display:block;max-width:none;max-height:none;pointer-events:none;transform-origin:center;will-change:transform;filter:drop-shadow(0 14px 32px #0009)}.loading,.error{position:absolute;inset:42px 0 0;display:grid;place-items:center;color:#9b9ea6;font-size:13px}.error{display:none;color:#e28b92}
+    .toolbar{position:absolute;z-index:4;left:50%;bottom:22px;transform:translateX(-50%);height:48px;display:flex;align-items:center;gap:3px;padding:6px 8px;border:1px solid #ffffff18;border-radius:13px;background:#222329e8;box-shadow:0 12px 35px #0008;backdrop-filter:blur(14px);-webkit-app-region:no-drag}.toolbar button{height:34px;min-width:36px;border:0;border-radius:8px;background:transparent;color:#d1d3d8;padding:0 9px}.toolbar button:hover,.toolbar button.active{background:#ffffff13;color:#fff}.toolbar .percent{width:55px;text-align:center;color:#aeb0b7;font-size:10px}.toolbar i{width:1px;height:21px;margin:0 5px;background:#ffffff17}.toolbar .text{font-size:11px}
+  </style>
+</head>
+<body>
+  <div class="viewer">
+    <header class="titlebar"><div class="file-title"><b id="name"></b><small id="size"></small></div><div class="window-actions"><button data-window="minimize" title="最小化">−</button><button data-window="maximize" title="最大化">□</button><button class="close" data-window="close" title="关闭">×</button></div></header>
+    <div class="stage" id="stage"><img id="image" draggable="false" /></div>
+    <div class="loading" id="loading">正在加载图片…</div><div class="error" id="error">图片加载失败</div>
+    <div class="toolbar">
+      <button id="zoomOut" title="缩小">−</button><span class="percent" id="percent">100%</span><button id="zoomIn" title="放大">+</button><i></i>
+      <button id="rotateLeft" title="向左旋转">↺</button><button id="rotateRight" title="向右旋转">↻</button><i></i>
+      <button class="text active" id="fit">适应</button><button class="text" id="actual">1:1</button><i></i>
+      <button class="text" id="reveal">定位</button><button class="text" id="open">打开原图</button>
+    </div>
+  </div>
+  <script>
+    const params=new URLSearchParams(location.search),projectId=params.get('projectId'),fileId=params.get('fileId'),name=params.get('name')||'图片',size=Number(params.get('size')||0)
+    const image=document.getElementById('image'),stage=document.getElementById('stage'),percent=document.getElementById('percent'),fitButton=document.getElementById('fit'),actualButton=document.getElementById('actual')
+    document.getElementById('name').textContent=name;document.title=`${name} - EazyFlow 图片查看器`;document.getElementById('size').textContent=size<1024?`${size} B`:size<1048576?`${(size/1024).toFixed(1)} KB`:`${(size/1048576).toFixed(1)} MB`
+    let scale=1,rotation=0,offset={x:0,y:0},mode='fit',drag=null
+    const clamp=value=>Math.min(8,Math.max(.1,value)),render=()=>{image.style.transform=`translate(${offset.x}px,${offset.y}px) rotate(${rotation}deg) scale(${scale})`;percent.textContent=`${Math.round(scale*100)}%`;fitButton.classList.toggle('active',mode==='fit');actualButton.classList.toggle('active',mode==='actual')}
+    const fit=()=>{const swap=Math.abs(rotation%180)===90,w=swap?image.naturalHeight:image.naturalWidth,h=swap?image.naturalWidth:image.naturalHeight;scale=Math.min((stage.clientWidth-72)/w,(stage.clientHeight-100)/h,1);offset={x:0,y:0};mode='fit';render()}
+    const actual=()=>{scale=1;offset={x:0,y:0};mode='actual';render()},zoom=delta=>{scale=clamp(scale+delta);mode='custom';render()}
+    image.onload=()=>{document.getElementById('loading').style.display='none';fit()};image.onerror=()=>{document.getElementById('loading').style.display='none';document.getElementById('error').style.display='grid'};image.src=`eazyflow-file://${projectId}/${fileId}`
+    stage.addEventListener('wheel',event=>{event.preventDefault();zoom(event.deltaY<0 ? .15 : -.15)},{passive:false});stage.addEventListener('dblclick',()=>mode==='actual'?fit():actual());stage.addEventListener('pointerdown',event=>{stage.setPointerCapture(event.pointerId);drag={x:event.clientX,y:event.clientY,left:offset.x,top:offset.y}});stage.addEventListener('pointermove',event=>{if(!drag)return;offset={x:drag.left+event.clientX-drag.x,y:drag.top+event.clientY-drag.y};render()});stage.addEventListener('pointerup',()=>drag=null);stage.addEventListener('pointercancel',()=>drag=null)
+    document.getElementById('zoomOut').onclick=()=>zoom(-.15);document.getElementById('zoomIn').onclick=()=>zoom(.15);document.getElementById('rotateLeft').onclick=()=>{rotation-=90;fit()};document.getElementById('rotateRight').onclick=()=>{rotation+=90;fit()};fitButton.onclick=fit;actualButton.onclick=actual;document.getElementById('open').onclick=()=>window.eazyflow.openFile(projectId,fileId);document.getElementById('reveal').onclick=()=>window.eazyflow.revealFile(projectId,fileId);document.querySelectorAll('[data-window]').forEach(button=>button.onclick=()=>window.eazyflow.controlWindow(button.dataset.window))
+    addEventListener('keydown',event=>{if(event.key==='Escape')window.eazyflow.controlWindow('close');else if(event.key==='+'||event.key==='=')zoom(.15);else if(event.key==='-')zoom(-.15);else if(event.key==='0')fit()});addEventListener('resize',()=>{if(mode==='fit')fit()})
+  </script>
+</body>
+</html>

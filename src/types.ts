@@ -63,11 +63,13 @@ declare global {
       importDroppedFiles: (projectId: string, category: FileCategory, files: File[]) => Promise<ProjectFile[]>
       importClipboardFiles: (projectId: string, category: FileCategory, files: File[]) => Promise<ProjectFile[]>
       filePreviewUrl: (projectId: string, fileId: string) => string
+      previewFile: (projectId: string, fileId: string) => Promise<void>
       openFile: (projectId: string, fileId: string) => Promise<void>
       revealFile: (projectId: string, fileId: string) => Promise<void>
       copyFile: (projectId: string, fileId: string) => Promise<string>
       renameFile: (projectId: string, fileId: string, name: string) => Promise<ProjectFile>
       deleteFile: (projectId: string, fileId: string) => Promise<void>
+      controlWindow: (action: 'minimize' | 'maximize' | 'close') => Promise<void>
       selectStorageRoot: () => Promise<string | undefined>
       revealStorageRoot: () => Promise<void>
       checkForUpdates: () => Promise<void>
