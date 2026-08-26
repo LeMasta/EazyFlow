@@ -4,8 +4,9 @@ const fs = require('node:fs/promises')
 const path = require('node:path')
 const crypto = require('node:crypto')
 const { pathToFileURL } = require('node:url')
+const { spawn } = require('node:child_process')
 
-let mainWindow
+let mainWindow, viewerWindow
 const isDev = Boolean(process.env.EAZYFLOW_DEV_URL)
 const categories = new Set(['task', 'reference', 'delivery', 'other'])
 const categoryFolders = { task: '任务文件', reference: '参考文件', delivery: '交付文件', other: '其他' }
@@ -141,6 +142,30 @@ async function findFile(projectId, fileId) {
   return { store, project, file, filePath: itemPath(store, project, file) }
 }
 
+function copyWindowsPaths(filePaths) {
+  return new Promise((resolve, reject) => {
+    const payload = Buffer.from(JSON.stringify(filePaths), 'utf8').toString('base64')
+    const script = `$ErrorActionPreference='Stop'; Add-Type -AssemblyName System.Windows.Forms; $json=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${payload}')); $paths=ConvertFrom-Json $json; $list=New-Object System.Collections.Specialized.StringCollection; foreach($item in @($paths)){[void]$list.Add([string]$item)}; for($i=0;$i -lt 4;$i++){try{[Windows.Forms.Clipboard]::SetFileDropList($list); exit 0}catch{if($i -eq 3){throw}; Start-Sleep -Milliseconds 80}}`
+    const encoded = Buffer.from(script, 'utf16le').toString('base64')
+    const child = spawn('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-STA', '-WindowStyle', 'Hidden', '-EncodedCommand', encoded], { windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] })
+    let error = ''
+    child.stderr.on('data', (chunk) => { error += chunk.toString() })
+    child.on('error', reject)
+    child.on('close', (code) => code === 0 ? resolve() : reject(new Error(error.trim() || '无法写入 Windows 文件剪贴板')))
+  })
+}
+
+async function showImageViewer(projectId, fileId) {
+  const { file, filePath } = await findFile(projectId, fileId)
+  if (file.kind === 'folder' || !['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg'].includes((file.extension || path.extname(filePath)).toLowerCase())) throw new Error('该文件不是可预览的图片')
+  if (viewerWindow && !viewerWindow.isDestroyed()) viewerWindow.close()
+  const nextWindow = new BrowserWindow({ width: 1080, height: 780, minWidth: 720, minHeight: 520, frame: false, show: false, backgroundColor: '#111216', title: file.name, hasShadow: true, webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false } })
+  viewerWindow = nextWindow
+  nextWindow.once('ready-to-show', () => { if (!nextWindow.isDestroyed()) nextWindow.show() })
+  nextWindow.on('closed', () => { if (viewerWindow === nextWindow) viewerWindow = undefined })
+  await nextWindow.loadFile(path.join(__dirname, 'image-viewer.html'), { query: { projectId, fileId, name: file.name, size: String(file.size || 0) } })
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({ width: 1440, height: 920, minWidth: 1080, minHeight: 720, backgroundColor: '#1e2025', title: 'EazyFlow', titleBarStyle: 'hidden', titleBarOverlay: { color: '#1e2025', symbolColor: '#f7f5ef', height: 38 }, autoHideMenuBar: true, webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false } })
   mainWindow.setMenuBarVisibility(false)
@@ -261,13 +286,13 @@ ipcMain.handle('file:import-folder', async (_event, projectId, category) => {
 ipcMain.handle('file:import-paths', (_event, projectId, category, sourcePaths) => importPaths(projectId, category, sourcePaths))
 ipcMain.handle('file:import-clipboard', (_event, projectId, category, items) => importClipboardItems(projectId, category, items))
 ipcMain.handle('file:open', async (_event, projectId, fileId) => { const { filePath } = await findFile(projectId, fileId); const error = await shell.openPath(filePath); if (error) throw new Error(error) })
+ipcMain.handle('file:preview', (_event, projectId, fileId) => showImageViewer(projectId, fileId))
 ipcMain.handle('file:reveal', async (_event, projectId, fileId) => { const { filePath } = await findFile(projectId, fileId); shell.showItemInFolder(filePath) })
 ipcMain.handle('file:copy', async (_event, projectId, fileId) => {
   const { filePath } = await findFile(projectId, fileId)
   if (!(await exists(filePath))) throw new Error('源文件不存在')
-  clipboard.clear()
-  if (process.platform === 'win32') clipboard.writeBuffer('FileNameW', Buffer.from(`${filePath}\0`, 'ucs2'))
-  else clipboard.writeText(filePath)
+  if (process.platform === 'win32') await copyWindowsPaths([filePath])
+  else { clipboard.clear(); clipboard.writeText(filePath) }
   return path.basename(filePath)
 })
 ipcMain.handle('file:rename', async (_event, projectId, fileId, requestedName) => {
@@ -306,6 +331,13 @@ ipcMain.handle('storage:select', async () => {
   return nextRoot
 })
 ipcMain.handle('storage:reveal', async () => { const store = await readStore(); await fs.mkdir(store.storageRoot, { recursive: true }); const error = await shell.openPath(store.storageRoot); if (error) throw new Error(error) })
+ipcMain.handle('window:control', (event, action) => {
+  const target = BrowserWindow.fromWebContents(event.sender)
+  if (!target) return
+  if (action === 'minimize') target.minimize()
+  else if (action === 'maximize') target.isMaximized() ? target.unmaximize() : target.maximize()
+  else if (action === 'close') target.close()
+})
 
 const sendUpdate = (status) => mainWindow?.webContents.send('updater:status', status)
 autoUpdater.on('checking-for-update', () => sendUpdate('正在检查更新…'))

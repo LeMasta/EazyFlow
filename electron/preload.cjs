@@ -16,11 +16,13 @@ contextBridge.exposeInMainWorld('eazyflow', {
     return filePath ? { path: filePath } : { name: file.name, type: file.type, data: Buffer.from(await file.arrayBuffer()) }
   }))),
   filePreviewUrl: (projectId, fileId) => `eazyflow-file://${projectId}/${fileId}`,
+  previewFile: (projectId, fileId) => ipcRenderer.invoke('file:preview', projectId, fileId),
   openFile: (projectId, fileId) => ipcRenderer.invoke('file:open', projectId, fileId),
   revealFile: (projectId, fileId) => ipcRenderer.invoke('file:reveal', projectId, fileId),
   copyFile: (projectId, fileId) => ipcRenderer.invoke('file:copy', projectId, fileId),
   renameFile: (projectId, fileId, name) => ipcRenderer.invoke('file:rename', projectId, fileId, name),
   deleteFile: (projectId, fileId) => ipcRenderer.invoke('file:delete', projectId, fileId),
+  controlWindow: (action) => ipcRenderer.invoke('window:control', action),
   selectStorageRoot: () => ipcRenderer.invoke('storage:select'),
   revealStorageRoot: () => ipcRenderer.invoke('storage:reveal'),
   checkForUpdates: () => ipcRenderer.invoke('updater:check'),
