@@ -12,18 +12,19 @@ export interface ProjectFile {
   extension: string
   storedName?: string
   createdAt: string
+  relativePath?: string
 }
 
 export interface Project {
   id: string
   name: string
   description: string
+  supportTarget?: string
   color: string
   status: ProjectStatus
   startAt: string
   dueAt?: string
   completedAt?: string
-  predecessorId?: string
   groupId?: string
   lastOpenedAt?: string
   folderName?: string
@@ -62,16 +63,23 @@ declare global {
     eazyflow: {
       getSnapshot: () => Promise<StoreSnapshot>
       getAppVersion: () => Promise<string>
-      createProject: (project: Omit<Project, 'id' | 'createdAt' | 'files'> & { groupName?: string; groupColor?: string }) => Promise<Project>
-      updateProject: (id: string, patch: Partial<Project> & { groupName?: string; groupColor?: string }) => Promise<Project>
+      createProject: (project: Omit<Project, 'id' | 'createdAt' | 'files'> & { relatedProjectId?: string; targetGroupId?: string; groupName?: string; groupColor?: string }) => Promise<Project>
+      updateProject: (id: string, patch: Partial<Project> & { relatedProjectId?: string; targetGroupId?: string; groupName?: string; groupColor?: string; clearGroup?: boolean }) => Promise<Project>
       updateGroup: (id: string, patch: Partial<ProjectGroup>) => Promise<ProjectGroup>
       deleteProject: (id: string) => Promise<void>
       touchProject: (id: string) => Promise<void>
       updateSettings: (settings: WorkSettings) => Promise<WorkSettings>
-      importFiles: (projectId: string, category: FileCategory) => Promise<ProjectFile[]>
-      importFolder: (projectId: string, category: FileCategory) => Promise<ProjectFile[]>
-      importDroppedFiles: (projectId: string, category: FileCategory, files: File[]) => Promise<ProjectFile[]>
-      importClipboardFiles: (projectId: string, category: FileCategory, files: File[]) => Promise<ProjectFile[]>
+      importFiles: (projectId: string, category: FileCategory, destination?: string) => Promise<ProjectFile[]>
+      importFolder: (projectId: string, category: FileCategory, destination?: string) => Promise<ProjectFile[]>
+      importDroppedFiles: (projectId: string, category: FileCategory, files: File[], destination?: string) => Promise<ProjectFile[]>
+      importClipboardFiles: (projectId: string, category: FileCategory, files: File[], destination?: string) => Promise<ProjectFile[]>
+      listFolder: (projectId: string, category: FileCategory, relativePath?: string) => Promise<ProjectFile[]>
+      createFolder: (projectId: string, category: FileCategory, relativePath: string, name: string) => Promise<void>
+      openFolderEntry: (projectId: string, category: FileCategory, relativePath: string) => Promise<void>
+      revealFolderEntry: (projectId: string, category: FileCategory, relativePath: string) => Promise<void>
+      copyFolderEntry: (projectId: string, category: FileCategory, relativePath: string) => Promise<string>
+      renameFolderEntry: (projectId: string, category: FileCategory, relativePath: string, name: string) => Promise<void>
+      deleteFolderEntry: (projectId: string, category: FileCategory, relativePath: string) => Promise<void>
       filePreviewUrl: (projectId: string, fileId: string) => string
       previewFile: (projectId: string, fileId: string) => Promise<void>
       openFile: (projectId: string, fileId: string) => Promise<void>
