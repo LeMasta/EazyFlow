@@ -262,7 +262,9 @@ ipcMain.handle('project:update', async (_event, id, patch) => {
     if (nextFolder !== project.folderName) await fs.rename(oldPath, path.join(store.storageRoot, nextFolder))
     project.folderName = nextFolder
   }
-  store.projects[index] = { ...project, ...safe }; await writeStore(store); return store.projects[index]
+  store.projects[index] = { ...project, ...safe }
+  store.groups = store.groups.filter((group) => store.projects.some((item) => item.groupId === group.id))
+  await writeStore(store); return store.projects[index]
 })
 ipcMain.handle('project:delete', async (_event, id) => {
   const store = await readStore(), project = store.projects.find((p) => p.id === id)
@@ -273,8 +275,7 @@ ipcMain.handle('project:delete', async (_event, id) => {
   for (const item of store.projects) if (item.predecessorId === id) delete item.predecessorId
   for (const group of [...store.groups]) {
     const members = store.projects.filter((item) => item.groupId === group.id)
-    if (members.length < 2) {
-      for (const member of members) delete member.groupId
+    if (members.length === 0) {
       store.groups = store.groups.filter((item) => item.id !== group.id)
     }
   }
