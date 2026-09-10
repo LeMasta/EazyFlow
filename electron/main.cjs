@@ -44,6 +44,36 @@ async function ensureProjectFolder(storageRoot, folderName) {
 function itemPath(store, project, file) {
   return path.join(store.storageRoot || paths().files, project.folderName, categoryFolders[file.category], file.storedName || file.name)
 }
+function categoryPath(store, project, category, relativePath = '') {
+  if (!categories.has(category)) throw new Error('无效文件分类')
+  const root = path.resolve(store.storageRoot || paths().files, project.folderName, categoryFolders[category])
+  const target = path.resolve(root, String(relativePath || ''))
+  if (target !== root && !target.startsWith(`${root}${path.sep}`)) throw new Error('文件夹路径无效')
+  return { root, target }
+}
+async function resolveAssociation(store, input, currentProject) {
+  if (input.clearGroup) return undefined
+  if (input.targetGroupId) {
+    const group = store.groups.find((item) => item.id === input.targetGroupId)
+    if (!group) throw new Error('选择的关联组不存在')
+    return group.id
+  }
+  if (input.relatedProjectId) {
+    const related = store.projects.find((item) => item.id === input.relatedProjectId)
+    if (!related || related.id === currentProject?.id) throw new Error('选择的关联项目不存在')
+    if (related.groupId) return related.groupId
+    const name = String(input.groupName || '').trim()
+    if (!name) throw new Error('首次关联项目时需要为关联组命名')
+    const group = { id: crypto.randomUUID(), name, description: '', color: input.groupColor || related.color, createdAt: new Date().toISOString() }
+    store.groups.push(group); related.groupId = group.id
+    return group.id
+  }
+  if (String(input.groupName || '').trim()) {
+    const group = { id: crypto.randomUUID(), name: String(input.groupName).trim(), description: '', color: input.groupColor || currentProject?.color || '#7557d9', createdAt: new Date().toISOString() }
+    store.groups.push(group); return group.id
+  }
+  return currentProject?.groupId
+}
 async function syncProjectFiles(store, project) {
   let changed = false
   const synchronized = []
@@ -152,6 +182,7 @@ async function readStore() {
       if (predecessor.groupId !== groupId) { predecessor.groupId = groupId; linked = true; migrated = true }
     }
   }
+  for (const project of data.projects) if (project.predecessorId) { delete project.predecessorId; migrated = true }
   if (migrated || !(await exists(p.store))) await writeStore(data)
   return data
 }
@@ -208,20 +239,8 @@ ipcMain.handle('store:get', readStore)
 ipcMain.handle('app:version', () => app.getVersion())
 ipcMain.handle('project:create', async (_event, input) => {
   const store = await readStore(), folderName = await uniqueName(store.storageRoot, input.name)
-  let groupId
-  if (input.predecessorId) {
-    const predecessor = store.projects.find((p) => p.id === input.predecessorId)
-    if (!predecessor || new Date(predecessor.startAt) >= new Date(input.startAt)) throw new Error('关联项目必须是开始时间更早的已有项目')
-    groupId = predecessor.groupId
-    if (!groupId) {
-      const groupName = String(input.groupName || '').trim()
-      if (!groupName) throw new Error('首次关联项目时需要为关联组命名')
-      groupId = crypto.randomUUID()
-      store.groups.push({ id: groupId, name: groupName, description: '', color: input.groupColor || predecessor.color, createdAt: new Date().toISOString() })
-      predecessor.groupId = groupId
-    }
-  }
-  const clean = { ...input }; delete clean.groupName; delete clean.groupColor
+  const groupId = await resolveAssociation(store, input)
+  const clean = { ...input }; for (const key of ['predecessorId', 'relatedProjectId', 'targetGroupId', 'groupName', 'groupColor', 'clearGroup']) delete clean[key]
   const project = { ...clean, ...(groupId ? { groupId } : {}), id: crypto.randomUUID(), folderName, createdAt: new Date().toISOString(), files: [] }
   await ensureProjectFolder(store.storageRoot, folderName); store.projects.push(project); await writeStore(store); return project
 })
@@ -233,25 +252,11 @@ ipcMain.handle('project:touch', async (_event, id) => {
 ipcMain.handle('project:update', async (_event, id, patch) => {
   const store = await readStore(), index = store.projects.findIndex((p) => p.id === id)
   if (index < 0) throw new Error('项目不存在')
-  const project = store.projects[index], safe = { ...patch }; const groupName = String(safe.groupName || '').trim(), groupColor = safe.groupColor; delete safe.groupName; delete safe.groupColor; delete safe.id; delete safe.files; delete safe.createdAt; delete safe.folderName; delete safe.groupId
-  if (safe.predecessorId) {
-    const predecessor = store.projects.find((p) => p.id === safe.predecessorId), nextStart = safe.startAt || project.startAt
-    if (!predecessor || predecessor.id === project.id || new Date(predecessor.startAt) >= new Date(nextStart)) throw new Error('关联项目必须是开始时间更早的已有项目')
-    let cursor = predecessor
-    while (cursor?.predecessorId) {
-      if (cursor.predecessorId === project.id) throw new Error('项目关联不能形成循环')
-      cursor = store.projects.find((p) => p.id === cursor.predecessorId)
-    }
-    if (predecessor.groupId && project.groupId && predecessor.groupId !== project.groupId) throw new Error('暂不支持合并两个已有的关联组')
-    if (predecessor.groupId) safe.groupId = predecessor.groupId
-    else if (project.groupId) { predecessor.groupId = project.groupId; safe.groupId = project.groupId }
-    else {
-      if (!groupName) throw new Error('首次关联项目时需要为关联组命名')
-      const groupId = crypto.randomUUID()
-      store.groups.push({ id: groupId, name: groupName, description: '', color: groupColor || predecessor.color, createdAt: new Date().toISOString() })
-      predecessor.groupId = groupId; safe.groupId = groupId
-    }
-  }
+  const project = store.projects[index], safe = { ...patch }
+  const associationChanged = ['relatedProjectId', 'targetGroupId', 'groupName', 'clearGroup'].some((key) => Object.prototype.hasOwnProperty.call(safe, key))
+  const nextGroupId = associationChanged ? await resolveAssociation(store, safe, project) : project.groupId
+  for (const key of ['predecessorId', 'relatedProjectId', 'targetGroupId', 'groupName', 'groupColor', 'clearGroup', 'id', 'files', 'createdAt', 'folderName', 'groupId']) delete safe[key]
+  if (associationChanged) { if (nextGroupId) safe.groupId = nextGroupId; else delete project.groupId }
   if (typeof safe.name === 'string' && safe.name.trim() && safe.name !== project.name) {
     const oldPath = path.join(store.storageRoot, project.folderName), nextFolder = await uniqueName(store.storageRoot, safe.name, oldPath)
     if (nextFolder !== project.folderName) await fs.rename(oldPath, path.join(store.storageRoot, nextFolder))
@@ -287,11 +292,11 @@ ipcMain.handle('settings:update', async (_event, settings) => {
   if (values.some((value) => !Number.isFinite(value)) || values[0] < 0 || values[1] > 24 || values[0] >= values[1] || values[2] < values[0] || values[3] > values[1] || values[2] >= values[3]) throw new Error('工作时间设置无效')
   const store = await readStore(); store.settings = settings; await writeStore(store); return settings
 })
-async function importPaths(projectId, category, sourcePaths) {
+async function importPaths(projectId, category, sourcePaths, destination = '') {
   if (!categories.has(category)) throw new Error('无效文件分类')
   const store = await readStore(), project = store.projects.find((p) => p.id === projectId)
   if (!project) throw new Error('项目不存在')
-  const targetRoot = path.join(store.storageRoot, project.folderName, categoryFolders[category]); await fs.mkdir(targetRoot, { recursive: true })
+  const targetRoot = categoryPath(store, project, category, destination).target; await fs.mkdir(targetRoot, { recursive: true })
   const imported = []
   for (const source of sourcePaths.filter(Boolean)) {
     const stat = await fs.stat(source), kind = stat.isDirectory() ? 'folder' : stat.isFile() ? 'file' : null
@@ -300,19 +305,21 @@ async function importPaths(projectId, category, sourcePaths) {
     const file = { id: crypto.randomUUID(), name: path.basename(source), storedName, kind, category, size: kind === 'file' ? stat.size : 0, extension, createdAt: new Date().toISOString() }
     const target = path.join(targetRoot, storedName)
     if (kind === 'folder') await fs.cp(source, target, { recursive: true, errorOnExist: true }); else await fs.copyFile(source, target)
-    project.files.push(file); imported.push(file)
+    if (!destination) project.files.push(file)
+    imported.push({ ...file, relativePath: path.relative(categoryPath(store, project, category).root, target).split(path.sep).join('/') })
   }
+  if (destination) await syncProjectFiles(store, project)
   await writeStore(store); return imported
 }
-async function importClipboardItems(projectId, category, items) {
+async function importClipboardItems(projectId, category, items, destination = '') {
   if (!categories.has(category)) throw new Error('无效文件分类')
   const imported = [], pathItems = items.filter((item) => item.path).map((item) => item.path)
-  if (pathItems.length) imported.push(...await importPaths(projectId, category, pathItems))
+  if (pathItems.length) imported.push(...await importPaths(projectId, category, pathItems, destination))
   const memoryItems = items.filter((item) => !item.path && item.data)
   if (!memoryItems.length) return imported
   const store = await readStore(), project = store.projects.find((p) => p.id === projectId)
   if (!project) throw new Error('项目不存在')
-  const targetRoot = path.join(store.storageRoot, project.folderName, categoryFolders[category]); await fs.mkdir(targetRoot, { recursive: true })
+  const targetRoot = categoryPath(store, project, category, destination).target; await fs.mkdir(targetRoot, { recursive: true })
   const mimeExtensions = { 'image/png': '.png', 'image/jpeg': '.jpg', 'image/gif': '.gif', 'image/webp': '.webp', 'image/bmp': '.bmp' }
   for (const item of memoryItems) {
     const buffer = Buffer.isBuffer(item.data) ? item.data : item.data?.type === 'Buffer' ? Buffer.from(item.data.data) : Buffer.from(item.data)
@@ -321,22 +328,23 @@ async function importClipboardItems(projectId, category, items) {
     const fallback = item.type?.startsWith('image/') ? `截图-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}${extension || '.png'}` : `剪贴板文件${extension}`
     const originalName = item.name && item.name !== 'image.png' ? item.name : fallback, storedName = await uniqueName(targetRoot, originalName)
     const file = { id: crypto.randomUUID(), name: originalName, storedName, kind: 'file', category, size: buffer.length, extension: path.extname(storedName), createdAt: new Date().toISOString() }
-    await fs.writeFile(path.join(targetRoot, storedName), buffer); project.files.push(file); imported.push(file)
+    await fs.writeFile(path.join(targetRoot, storedName), buffer); if (!destination) project.files.push(file); imported.push({ ...file, relativePath: path.relative(categoryPath(store, project, category).root, path.join(targetRoot, storedName)).split(path.sep).join('/') })
   }
+  if (destination) await syncProjectFiles(store, project)
   await writeStore(store); return imported
 }
-ipcMain.handle('file:import', async (_event, projectId, category) => {
+ipcMain.handle('file:import', async (_event, projectId, category, destination = '') => {
   if (!categories.has(category)) throw new Error('无效文件分类')
   const result = await dialog.showOpenDialog(mainWindow, { properties: ['openFile', 'multiSelections'] })
-  return result.canceled ? [] : importPaths(projectId, category, result.filePaths)
+  return result.canceled ? [] : importPaths(projectId, category, result.filePaths, destination)
 })
-ipcMain.handle('file:import-folder', async (_event, projectId, category) => {
+ipcMain.handle('file:import-folder', async (_event, projectId, category, destination = '') => {
   if (!categories.has(category)) throw new Error('无效文件分类')
   const result = await dialog.showOpenDialog(mainWindow, { properties: ['openDirectory'] })
-  return result.canceled ? [] : importPaths(projectId, category, result.filePaths)
+  return result.canceled ? [] : importPaths(projectId, category, result.filePaths, destination)
 })
-ipcMain.handle('file:import-paths', (_event, projectId, category, sourcePaths) => importPaths(projectId, category, sourcePaths))
-ipcMain.handle('file:import-clipboard', (_event, projectId, category, items) => importClipboardItems(projectId, category, items))
+ipcMain.handle('file:import-paths', (_event, projectId, category, sourcePaths, destination = '') => importPaths(projectId, category, sourcePaths, destination))
+ipcMain.handle('file:import-clipboard', (_event, projectId, category, items, destination = '') => importClipboardItems(projectId, category, items, destination))
 ipcMain.handle('file:open', async (_event, projectId, fileId) => { const { filePath } = await findFile(projectId, fileId); const error = await shell.openPath(filePath); if (error) throw new Error(error) })
 ipcMain.handle('file:preview', (_event, projectId, fileId) => showImageViewer(projectId, fileId))
 ipcMain.handle('file:reveal', async (_event, projectId, fileId) => { const { filePath } = await findFile(projectId, fileId); shell.showItemInFolder(filePath) })
@@ -363,6 +371,44 @@ ipcMain.handle('file:delete', async (_event, projectId, fileId) => {
   project.files = project.files.filter((f) => f.id !== fileId); await writeStore(store)
   const categoryRoot = path.join(store.storageRoot, project.folderName, categoryFolders[file.category])
   await fs.rmdir(categoryRoot).catch(() => {})
+})
+ipcMain.handle('folder:list', async (_event, projectId, category, relativePath = '') => {
+  const store = await readStore(), project = store.projects.find((item) => item.id === projectId)
+  if (!project) throw new Error('项目不存在')
+  const { root, target } = categoryPath(store, project, category, relativePath)
+  if (!(await exists(target))) return []
+  const entries = []
+  for (const entry of await fs.readdir(target, { withFileTypes: true })) {
+    if (!entry.isFile() && !entry.isDirectory()) continue
+    const fullPath = path.join(target, entry.name), stat = await fs.stat(fullPath)
+    entries.push({ id: path.relative(root, fullPath).split(path.sep).join('/'), relativePath: path.relative(root, fullPath).split(path.sep).join('/'), name: entry.name, storedName: entry.name, kind: entry.isDirectory() ? 'folder' : 'file', category, size: entry.isFile() ? stat.size : 0, extension: entry.isFile() ? path.extname(entry.name) : '', createdAt: stat.birthtime.toISOString() })
+  }
+  return entries.sort((a, b) => a.kind === b.kind ? a.name.localeCompare(b.name, 'zh-CN') : a.kind === 'folder' ? -1 : 1)
+})
+ipcMain.handle('folder:create', async (_event, projectId, category, relativePath, requestedName) => {
+  const store = await readStore(), project = store.projects.find((item) => item.id === projectId)
+  if (!project) throw new Error('项目不存在')
+  const { target } = categoryPath(store, project, category, relativePath), name = validItemName(requestedName)
+  await fs.mkdir(target, { recursive: true }); const folderName = await uniqueName(target, name); await fs.mkdir(path.join(target, folderName))
+  await syncProjectFiles(store, project); await writeStore(store); return folderName
+})
+async function folderEntry(projectId, category, relativePath) {
+  const store = await readStore(), project = store.projects.find((item) => item.id === projectId)
+  if (!project) throw new Error('项目不存在')
+  const { root, target } = categoryPath(store, project, category, relativePath)
+  if (target === root || !(await exists(target))) throw new Error('文件或文件夹不存在')
+  return { store, project, root, target }
+}
+ipcMain.handle('folder:open', async (_event, projectId, category, relativePath) => { const { target } = await folderEntry(projectId, category, relativePath); const error = await shell.openPath(target); if (error) throw new Error(error) })
+ipcMain.handle('folder:reveal', async (_event, projectId, category, relativePath) => { const { target } = await folderEntry(projectId, category, relativePath); shell.showItemInFolder(target) })
+ipcMain.handle('folder:copy', async (_event, projectId, category, relativePath) => { const { target } = await folderEntry(projectId, category, relativePath); if (process.platform === 'win32') await copyWindowsPaths([target]); else { clipboard.clear(); clipboard.writeText(target) }; return path.basename(target) })
+ipcMain.handle('folder:rename', async (_event, projectId, category, relativePath, requestedName) => {
+  const { store, project, target } = await folderEntry(projectId, category, relativePath), name = validItemName(requestedName), nextName = await uniqueName(path.dirname(target), name, target)
+  await fs.rename(target, path.join(path.dirname(target), nextName)); await syncProjectFiles(store, project); await writeStore(store)
+})
+ipcMain.handle('folder:delete', async (_event, projectId, category, relativePath) => {
+  const { store, project, target } = await folderEntry(projectId, category, relativePath)
+  await shell.trashItem(target); await syncProjectFiles(store, project); await writeStore(store)
 })
 ipcMain.handle('storage:select', async () => {
   const store = await readStore(), result = await dialog.showOpenDialog(mainWindow, { title: '选择 EazyFlow 项目存储位置', defaultPath: store.storageRoot, properties: ['openDirectory', 'createDirectory'] })
