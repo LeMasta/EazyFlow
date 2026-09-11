@@ -381,7 +381,8 @@ ipcMain.handle('folder:list', async (_event, projectId, category, relativePath =
   const entries = []
   for (const entry of await fs.readdir(target, { withFileTypes: true })) {
     if (!entry.isFile() && !entry.isDirectory()) continue
-    const fullPath = path.join(target, entry.name), stat = await fs.stat(fullPath)
+    const fullPath = path.join(target, entry.name), stat = await fs.stat(fullPath).catch(() => null)
+    if (!stat) continue
     entries.push({ id: path.relative(root, fullPath).split(path.sep).join('/'), relativePath: path.relative(root, fullPath).split(path.sep).join('/'), name: entry.name, storedName: entry.name, kind: entry.isDirectory() ? 'folder' : 'file', category, size: entry.isFile() ? stat.size : 0, extension: entry.isFile() ? path.extname(entry.name) : '', createdAt: stat.birthtime.toISOString() })
   }
   return entries.sort((a, b) => a.kind === b.kind ? a.name.localeCompare(b.name, 'zh-CN') : a.kind === 'folder' ? -1 : 1)
