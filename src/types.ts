@@ -54,6 +54,7 @@ export interface WorkSettings {
   restDates: string[]
   dayOverrides: Record<string, DayOverride>
   recentProjectDays: number
+  receivePrereleases: boolean
 }
 
 export interface StoreSnapshot { projects: Project[]; groups: ProjectGroup[]; settings: WorkSettings | null; storageRoot: string }

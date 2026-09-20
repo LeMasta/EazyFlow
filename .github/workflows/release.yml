@@ -4,6 +4,20 @@ on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      release_kind:
+        description: 发布类型
+        required: true
+        default: beta
+        type: choice
+        options:
+          - beta
+          - stable
+      source_ref:
+        description: 要发布的分支或提交（稳定版必须为 main）
+        required: true
+        default: main
+        type: string
 
 permissions:
   contents: write
@@ -17,7 +31,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ inputs.source_ref }}
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
@@ -28,6 +42,20 @@ jobs:
         run: |
           VERSION="$(node -p "require('./package.json').version")"
           echo "value=$VERSION" >> "$GITHUB_OUTPUT"
+          if [[ "${{ inputs.release_kind }}" == "beta" && ! "$VERSION" =~ -beta\.[0-9]+$ ]]; then
+            echo "::error::测试版版本号必须使用 x.y.z-beta.n 格式，当前为 $VERSION"
+            exit 1
+          fi
+          if [[ "${{ inputs.release_kind }}" == "stable" ]]; then
+            if [[ "${{ inputs.source_ref }}" != "main" ]]; then
+              echo "::error::正式版只允许从 main 发布"
+              exit 1
+            fi
+            if [[ "$VERSION" == *-* ]]; then
+              echo "::error::正式版版本号不能包含预发布标识，当前为 $VERSION"
+              exit 1
+            fi
+          fi
           CURRENT_COMMIT="$(git rev-parse HEAD)"
           if git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
             EXISTING_COMMIT="$(git rev-list -n 1 "v$VERSION")"
@@ -60,7 +88,20 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+      - name: Select update channel
+        shell: pwsh
+        run: |
+          $version = node -p "require('./package.json').version"
+          if ($version -match '-beta\.[0-9]+$') {
+            "EAZYFLOW_UPDATE_CHANNEL=beta" >> $env:GITHUB_ENV
+            "EAZYFLOW_RELEASE_TYPE=prerelease" >> $env:GITHUB_ENV
+          } elseif ($version -match '-') {
+            throw "不支持的预发布版本号: $version"
+          } else {
+            "EAZYFLOW_UPDATE_CHANNEL=latest" >> $env:GITHUB_ENV
+            "EAZYFLOW_RELEASE_TYPE=release" >> $env:GITHUB_ENV
+          }
       - name: Build installer and publish GitHub Release
-        run: npx electron-builder --win nsis --x64 --publish always
+        run: npx electron-builder --win nsis --x64 --publish always --config.publish.channel=$env:EAZYFLOW_UPDATE_CHANNEL --config.publish.releaseType=$env:EAZYFLOW_RELEASE_TYPE
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

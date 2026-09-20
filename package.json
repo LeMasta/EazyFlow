@@ -1,6 +1,6 @@
 {
   "name": "eazyflow",
-  "version": "0.8.8",
+  "version": "0.8.9",
   "private": true,
   "description": "A project-first calendar and file workspace for Windows 11.",
   "author": "LeMasta",
@@ -38,6 +38,7 @@
     "appId": "com.lemasta.eazyflow",
     "productName": "EazyFlow",
     "asar": true,
+    "generateUpdatesFilesForAllChannels": true,
     "directories": {
       "output": "release"
     },
