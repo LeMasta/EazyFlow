@@ -1,0 +1,41 @@
+/* v0.8.10 — consistent feedback for every interactive control */
+:root{--focus-ring:#7557d9;--feedback-shadow:0 5px 14px #28231b16;--feedback-ease:140ms ease}
+
+button,summary,select,input[type="checkbox"],input[type="color"]{cursor:pointer}
+button,input,textarea,select,summary{transition:background-color var(--feedback-ease),border-color var(--feedback-ease),color var(--feedback-ease),box-shadow var(--feedback-ease),opacity var(--feedback-ease),transform var(--feedback-ease)}
+button:disabled,input:disabled,select:disabled,textarea:disabled{cursor:not-allowed;opacity:.48}
+button:not(:disabled):hover{opacity:.86}
+button:not(:disabled):active,summary:active{opacity:.72;transform:translateY(1px)}
+:where(button,summary,input,textarea,select):focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}
+
+.primary:not(.wide):not(:disabled):hover,.finish-button:not(:disabled):hover{opacity:1;background:#151511;box-shadow:0 6px 16px #24211a28;transform:translateY(-1px)}
+.primary.wide:not(:disabled):hover{opacity:1;background:#fff;color:#171713;box-shadow:0 7px 18px #0003;transform:translateY(-1px)}
+.secondary:not(:disabled):hover,.date-nav button:not(:disabled):hover,.back:not(:disabled):hover,.ghost:hover,.zoom-bar button:not(:disabled):hover,.modal-head button:not(:disabled):hover{opacity:1;border-color:#c7c1b6;background:#f3f1eb;color:#24231f;box-shadow:var(--feedback-shadow);transform:translateY(-1px)}
+.sidebar button:not(:disabled):hover,.sidebar button:not(:disabled):active{opacity:1}
+.segmented button:not(:disabled):hover{opacity:1;background:#f8f7f4;color:#302e29}.segmented button.active:hover{background:#fff;box-shadow:0 2px 7px #00000020}
+.schedule-button:not(:disabled):hover{opacity:1;transform:translateY(-1px);box-shadow:var(--feedback-shadow)}
+.material-tabs button:not(:disabled):hover,.folder-breadcrumb button:not(:disabled):hover{opacity:1}
+.preset-row button:not(:disabled):hover,.weekday-row button:not(:disabled):hover{opacity:1;border-color:#bdb7ab;background:#f4f2ed;color:#34312c;transform:translateY(-1px)}
+.preset-row button.active:hover,.weekday-row button.active:hover{background:#292823;color:#fff;border-color:#292823}
+.file-actions button:not(:disabled):hover{opacity:1;background:#ece9e2;border-radius:6px;transform:translateY(-1px)}
+.file-actions .file-delete:not(:disabled):hover{background:#f9e8e9;color:#b6323e}
+.group-library-card>button{right:8px;bottom:9px;padding:6px 8px;border-radius:7px}.group-library-card>button:not(:disabled):hover{opacity:1;background:#f1edf8}
+.month-pill:not(:disabled):hover{opacity:1;background:color-mix(in srgb,var(--bubble) 27%,white);box-shadow:0 4px 10px #2f29201c;transform:translateY(-1px)}
+.horizontal-bubble:not(:disabled):hover,.row-project:not(:disabled):hover,.group-chain-step>button:not(:disabled):hover,.group-members-grid>button:not(:disabled):hover{opacity:1;transform:translateY(-1px)}
+.color-row button:not(:disabled):hover{opacity:1;transform:scale(1.12);box-shadow:0 0 0 2px #fff,0 0 0 3px #6d685f}.color-row button:not(:disabled):active{transform:scale(.98)}
+
+.check-row{cursor:pointer;transition:background-color var(--feedback-ease),box-shadow var(--feedback-ease)}
+.check-row:hover{background:#f1efe9;box-shadow:inset 0 0 0 1px #dfdbd1}.check-row:has(input:disabled){cursor:not-allowed;opacity:.58}.check-row input{cursor:inherit;accent-color:#7557d9}
+select:hover{border-color:#bcb6aa!important;background-color:#fff!important}
+.modal input:not([type="checkbox"]):not([type="color"]):hover,.modal textarea:hover,.new-folder-row input:hover{border-color:#c4beb2}
+.search,.library-search{transition:border-color var(--feedback-ease),box-shadow var(--feedback-ease),background-color var(--feedback-ease)}
+.search:hover,.library-search:hover{border-color:#c3bdb1;background:#fff}.search:focus-within,.library-search:focus-within{border-color:#8f7acb;box-shadow:0 0 0 3px #7557d91c}
+
+.library-project,.group-library-card,.day,.file-row,.image-card{cursor:pointer}
+.library-project{transition:background-color var(--feedback-ease),box-shadow var(--feedback-ease),transform var(--feedback-ease)}
+.library-project:hover{background:#f7f5ef;box-shadow:inset 3px 0 0 #b9b2a6;transform:translateX(2px)}
+.group-library-card{transition:border-color var(--feedback-ease),box-shadow var(--feedback-ease),transform var(--feedback-ease)}
+.group-library-card:hover{border-color:#c8c1b5;box-shadow:0 12px 30px #28231b18;transform:translateY(-2px)}
+.day:hover{box-shadow:inset 0 0 0 2px #bbb4a8}
+
+@media(prefers-reduced-motion:reduce){button,input,textarea,select,summary,.check-row,.library-project,.group-library-card,.day,.file-row,.image-card{transition:none!important}.primary,.secondary,.finish-button,.schedule-button,.date-nav button,.back,.ghost,.zoom-bar button,.month-pill,.horizontal-bubble,.row-project,.group-chain-step>button,.group-members-grid>button,.library-project,.group-library-card,.color-row button{transform:none!important}}
