@@ -65,12 +65,10 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true
     },
-    "publish": [
-      {
-        "provider": "github",
-        "owner": "LeMasta",
-        "repo": "EazyFlow"
-      }
-    ]
+    "publish": {
+      "provider": "github",
+      "owner": "LeMasta",
+      "repo": "EazyFlow"
+    }
   }
 }
