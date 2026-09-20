@@ -223,7 +223,7 @@ function RenameInput({file,onSave,onCancel}:{file:ProjectFile;onSave:(name:strin
 }
 
 function FileActions({file,onRename,onCopy,onOpen,onReveal,onDelete}:{file:ProjectFile;onRename:()=>void;onCopy:(file:ProjectFile)=>void;onOpen:(file:ProjectFile)=>void;onReveal:(file:ProjectFile)=>void;onDelete:(file:ProjectFile)=>void}){
-  return <div className="file-actions" onClick={e=>e.stopPropagation()}><button title="重命名" onClick={onRename}><Edit3/></button><button title="复制到应用外" onClick={()=>onCopy(file)}><Copy/></button><button title="打开" onClick={()=>onOpen(file)}><ExternalLink/></button><button title="在资源管理器中定位" onClick={()=>onReveal(file)}><FolderOpen/></button><button className="file-delete" title="删除" onClick={()=>onDelete(file)}><Trash2/></button></div>
+  return <div className="file-actions" onClick={e=>e.stopPropagation()} onDoubleClick={e=>e.stopPropagation()}><button title="重命名" onClick={onRename}><Edit3/></button><button title="复制到应用外" onClick={()=>onCopy(file)}><Copy/></button><button title="打开" onClick={()=>onOpen(file)}><ExternalLink/></button><button title="在资源管理器中定位" onClick={()=>onReveal(file)}><FolderOpen/></button><button className="file-delete" title="删除" onClick={()=>onDelete(file)}><Trash2/></button></div>
 }
 
 function CreateProject({projects,groups,onClose,onCreated}:{projects:Project[];groups:ProjectGroup[];onClose:()=>void;onCreated:(p:Project)=>void}){
