@@ -132,7 +132,7 @@ async function readStore() {
   await fs.mkdir(data.storageRoot, { recursive: true })
   if (data.settings) data.settings = {
     weekPreset: '双休', workDays: [1, 2, 3, 4, 5], bigWeekStartsThisWeek: true,
-    publicHolidays: true, makeupWorkdays: true, irregularRest: false, restDates: [], dayOverrides: {}, recentProjectDays: 3, ...data.settings
+    publicHolidays: true, makeupWorkdays: true, irregularRest: false, restDates: [], dayOverrides: {}, recentProjectDays: 3, receivePrereleases: false, ...data.settings
   }
   let migrated = false
   const reservedFolders = new Set()
@@ -222,6 +222,12 @@ function createWindow() {
   if (isDev) mainWindow.loadURL(process.env.EAZYFLOW_DEV_URL)
   else mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'))
 }
+function configureUpdateChannel(settings) {
+  const receivePrereleases = settings?.receivePrereleases === true
+  autoUpdater.allowPrerelease = receivePrereleases
+  autoUpdater.channel = receivePrereleases ? 'beta' : 'latest'
+  autoUpdater.allowDowngrade = false
+}
 app.whenReady().then(async () => {
   Menu.setApplicationMenu(null)
   protocol.handle('eazyflow-file', async (request) => {
@@ -229,6 +235,8 @@ app.whenReady().then(async () => {
     if (file.kind === 'folder') return new Response('Folder previews are not supported', { status: 400 })
     return net.fetch(pathToFileURL(filePath).toString())
   })
+  const store = await readStore()
+  configureUpdateChannel(store.settings)
   createWindow()
   if (!isDev) setTimeout(() => autoUpdater.checkForUpdatesAndNotify().catch(() => {}), 3500)
 })
@@ -291,7 +299,8 @@ ipcMain.handle('group:update', async (_event, id, patch) => {
 ipcMain.handle('settings:update', async (_event, settings) => {
   const values = ['startHour', 'endHour', 'breakStart', 'breakEnd'].map((key) => Number(settings[key]))
   if (values.some((value) => !Number.isFinite(value)) || values[0] < 0 || values[1] > 24 || values[0] >= values[1] || values[2] < values[0] || values[3] > values[1] || values[2] >= values[3]) throw new Error('工作时间设置无效')
-  const store = await readStore(); store.settings = settings; await writeStore(store); return settings
+  const normalized = { ...settings, receivePrereleases: settings.receivePrereleases === true }
+  const store = await readStore(); store.settings = normalized; await writeStore(store); configureUpdateChannel(normalized); return normalized
 })
 async function importPaths(projectId, category, sourcePaths, destination = '') {
   if (!categories.has(category)) throw new Error('无效文件分类')

@@ -7,6 +7,7 @@
 .settings-card-body h2{font-size:19px;margin:2px 0 8px}.settings-card-body p{margin:0 0 13px;color:#59574f;line-height:1.6}.settings-card-body small{display:block;color:#918e85;line-height:1.55;margin-top:10px}
 .storage-path{background:#f7f6f2;border:1px solid #e5e2d9;border-radius:11px;padding:11px 13px;color:#44423c;font:13px/1.4 ui-monospace,SFMono-Regular,Consolas,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .settings-card-actions{display:flex;gap:9px;align-items:center}.settings-card-actions button{white-space:nowrap;display:flex;align-items:center;gap:7px}.settings-card-actions svg{width:17px}
+.settings-card-body .update-channel{max-width:480px;margin-top:16px!important}.settings-card-body .update-channel small{margin-top:3px}
 .file-heading-actions{margin-left:auto;display:flex;gap:8px}.file-heading-actions button{position:static!important;display:flex;align-items:center;gap:6px;white-space:nowrap}.file-heading-actions svg{width:17px}
 .material-empty{cursor:default}.compact-drop{cursor:default!important}
 .folder-row{background:#fbfaf6}.folder-row .file-type{background:#ece8dc;color:#5d594d}.folder-row .file-type svg{width:21px}
