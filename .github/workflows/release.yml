@@ -101,7 +101,29 @@ jobs:
             "EAZYFLOW_UPDATE_CHANNEL=latest" >> $env:GITHUB_ENV
             "EAZYFLOW_RELEASE_TYPE=release" >> $env:GITHUB_ENV
           }
-      - name: Build installer and publish GitHub Release
-        run: npx electron-builder --win nsis --x64 --publish always --config.publish.channel=$env:EAZYFLOW_UPDATE_CHANNEL --config.publish.releaseType=$env:EAZYFLOW_RELEASE_TYPE
+      - name: Build Windows installer
+        run: npx electron-builder --win nsis --x64 --publish never --config.publish.channel=$env:EAZYFLOW_UPDATE_CHANNEL
+      - name: Create one GitHub Release and upload all assets
+        shell: pwsh
+        run: |
+          $version = node -p "require('./package.json').version"
+          $tag = "v$version"
+          $installer = "release/EazyFlow-Setup-$version.exe"
+          $blockmap = "$installer.blockmap"
+          $metadata = "release/$env:EAZYFLOW_UPDATE_CHANNEL.yml"
+          foreach ($asset in @($installer, $blockmap, $metadata)) {
+            if (-not (Test-Path $asset)) { throw "缺少发布资产: $asset" }
+          }
+          gh release view $tag --repo $env:GITHUB_REPOSITORY --json id 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            if ($env:EAZYFLOW_RELEASE_TYPE -eq 'prerelease') {
+              gh release create $tag --repo $env:GITHUB_REPOSITORY --title $version --verify-tag --prerelease
+            } else {
+              gh release create $tag --repo $env:GITHUB_REPOSITORY --title $version --verify-tag --latest
+            }
+            if ($LASTEXITCODE -ne 0) { throw "创建 GitHub Release 失败" }
+          }
+          gh release upload $tag $installer $blockmap $metadata --repo $env:GITHUB_REPOSITORY --clobber
+          if ($LASTEXITCODE -ne 0) { throw "上传 GitHub Release 资产失败" }
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
