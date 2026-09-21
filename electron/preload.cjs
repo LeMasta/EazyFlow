@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('eazyflow', {
     return filePath ? { path: filePath } : { name: file.name, type: file.type, data: Buffer.from(await file.arrayBuffer()) }
   })), destination),
   listFolder: (projectId, category, relativePath) => ipcRenderer.invoke('folder:list', projectId, category, relativePath),
+  searchFiles: (query) => ipcRenderer.invoke('search:files', query),
   createFolder: (projectId, category, relativePath, name) => ipcRenderer.invoke('folder:create', projectId, category, relativePath, name),
   openFolderEntry: (projectId, category, relativePath) => ipcRenderer.invoke('folder:open', projectId, category, relativePath),
   revealFolderEntry: (projectId, category, relativePath) => ipcRenderer.invoke('folder:reveal', projectId, category, relativePath),

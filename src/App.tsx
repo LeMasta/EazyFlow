@@ -3,7 +3,7 @@ import { addDays, addMonths, differenceInCalendarWeeks, eachDayOfInterval, endOf
 import { zhCN } from 'date-fns/locale'
 import { ArrowRight, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Clock3, Copy, Edit3, ExternalLink, File as FileIcon, FileCheck2, FileInput, FolderOpen, FolderPlus, LayoutGrid, Library, Link2, MoreHorizontal, Plus, RefreshCw, Search, Settings2, Trash2, Upload, X, ZoomIn, ZoomOut } from 'lucide-react'
 import { getFestival, isAdditionalWorkday } from 'chinese-workday'
-import type { DayOverride, DisplayStatus, FileCategory, Project, ProjectFile, ProjectGroup, ProjectStatus, WorkSettings } from './types'
+import type { DayOverride, DisplayStatus, FileCategory, GlobalSearchFileResult, Project, ProjectFile, ProjectGroup, ProjectStatus, WorkSettings } from './types'
 
 const categories: { id: FileCategory; label: string; hint: string; icon: typeof FileIcon }[] = [
   { id: 'task', label: '任务文件', hint: '需求、原始素材与任务说明', icon: FileInput },
@@ -73,6 +73,9 @@ function App() {
   const [creating,setCreating]=useState(false)
   const [scheduleOpen,setScheduleOpen]=useState(false)
   const [search,setSearch]=useState('')
+  const [searchOpen,setSearchOpen]=useState(false)
+  const [fileSearchResults,setFileSearchResults]=useState<GlobalSearchFileResult[]>([])
+  const [searchingFiles,setSearchingFiles]=useState(false)
   const [update,setUpdate]=useState('')
   const [context,setContext]=useState<{x:number;y:number;project:Project}|null>(null)
   const [dayContext,setDayContext]=useState<{x:number;y:number;date:Date}|null>(null)
@@ -81,11 +84,24 @@ function App() {
   useEffect(()=>{load();const sync=()=>load();window.addEventListener('focus',sync);window.eazyflow.getAppVersion().then(setAppVersion).catch(()=>{});const unsubscribe=window.eazyflow.onUpdateStatus(setUpdate);return()=>{window.removeEventListener('focus',sync);unsubscribe()}},[])
   useEffect(()=>{const timer=window.setInterval(()=>setNow(new Date()),30000);return()=>window.clearInterval(timer)},[])
   useEffect(()=>{const close=()=>{setContext(null);setDayContext(null)};window.addEventListener('click',close);return()=>window.removeEventListener('click',close)},[])
+  useEffect(()=>{
+    const needle=search.trim()
+    if(!needle){setFileSearchResults([]);setSearchingFiles(false);return}
+    let cancelled=false
+    setFileSearchResults([])
+    setSearchingFiles(true)
+    const timer=window.setTimeout(()=>window.eazyflow.searchFiles(needle).then(results=>{if(!cancelled)setFileSearchResults(results)}).catch(()=>{if(!cancelled)setFileSearchResults([])}).finally(()=>{if(!cancelled)setSearchingFiles(false)}),220)
+    return()=>{cancelled=true;window.clearTimeout(timer)}
+  },[search])
   const active=projects.find(p=>p.id===activeId)
   const activeGroup=groups.find(group=>group.id===activeGroupId)
-  const visible=projects.filter(p=>`${p.name} ${p.description} ${p.supportTarget||''}`.toLowerCase().includes(search.toLowerCase()))
+  const searchNeedle=search.trim().toLocaleLowerCase('zh-CN')
+  const projectSearchResults=searchNeedle?projects.filter(p=>`${p.name} ${p.description} ${p.supportTarget||''}`.toLocaleLowerCase('zh-CN').includes(searchNeedle)).slice(0,20):[]
   const recentProjects=projects.filter(p=>!settings?.recentProjectDays||new Date(p.lastOpenedAt||p.createdAt).getTime()>=now.getTime()-settings.recentProjectDays*86400000).sort((a,b)=>new Date(b.lastOpenedAt||b.createdAt).getTime()-new Date(a.lastOpenedAt||a.createdAt).getTime())
   const openProject=async(p:Project)=>{setActiveGroupId(null);setActiveId(p.id);setContext(null);try{await window.eazyflow.touchProject(p.id);await load()}catch{/* 项目详情仍可打开 */}}
+  const clearSearch=()=>{setSearch('');setSearchOpen(false)}
+  const openSearchProject=(project:Project)=>{clearSearch();openProject(project)}
+  const openSearchFile=async(result:GlobalSearchFileResult)=>{clearSearch();try{await window.eazyflow.openFolderEntry(result.projectId,result.category,result.relativePath);await window.eazyflow.touchProject(result.projectId);await load()}catch(error){alert(error instanceof Error?error.message:'无法打开搜索结果')}}
   const openGroup=(group:ProjectGroup)=>{setActiveId(null);setActiveGroupId(group.id);setPage('library')}
   const remove=async(p:Project)=>{
     if(!confirm(`删除项目“${p.name}”？\n\n项目文件夹会移入 Windows 回收站，项目记录将从 EazyFlow 中移除。`))return
@@ -102,14 +118,27 @@ function App() {
       <div className="sidebar-bottom"><button className={!active&&!activeGroup&&page==='settings'?'selected':''} onClick={()=>{setActiveId(null);setActiveGroupId(null);setPage('settings')}}><Settings2/>设置</button></div>
     </aside>
     <main>{active?<ProjectPage project={active} projects={projects} groups={groups} now={now} backLabel={page==='library'?'返回项目库':page==='settings'?'返回设置':'返回时间表'} onBack={()=>setActiveId(null)} onOpenGroup={openGroup} onChanged={load} onDelete={()=>remove(active)}/>:activeGroup?<ProjectGroupPage group={activeGroup} projects={projects} groups={groups} now={now} onBack={()=>setActiveGroupId(null)} onOpen={openProject} onChanged={load}/>:page==='settings'&&settings?<SettingsPage storageRoot={storageRoot} settings={settings} update={update} appVersion={appVersion} onSettingsChanged={async next=>{await window.eazyflow.updateSettings(next);setSettings(next)}} onStorageChanged={load}/>:page==='library'?<ProjectLibrary projects={projects} groups={groups} now={now} onOpen={openProject} onOpenGroup={openGroup}/>:<>
-      <header className="topbar"><div className="date-title"><p className="eyebrow">工作概览</p><div><h1>{view==='hour'?format(cursor,'M月d日 EEEE',{locale:zhCN}):format(cursor,'yyyy年 M月',{locale:zhCN})}</h1><div className="date-nav"><button onClick={()=>setCursor(view==='hour'?addDays(cursor,-1):subMonths(cursor,1))}><ChevronLeft/></button><button className="today" onClick={()=>setCursor(new Date())}>今天</button><button onClick={()=>setCursor(view==='hour'?addDays(cursor,1):addMonths(cursor,1))}><ChevronRight/></button></div></div></div><div className="top-actions"><div className="segmented view-switch"><button className={view==='hour'?'active':''} onClick={()=>setView('hour')}><Clock3/>小时表</button><button className={view==='month'?'active':''} onClick={()=>setView('month')}><LayoutGrid/>月历</button></div><button className="schedule-button" onClick={()=>setScheduleOpen(true)}><Settings2/>工作日历</button><div className="search"><Search/><input value={search} onInput={e=>setSearch(e.currentTarget.value)} placeholder="搜索项目"/></div></div></header>
-      {settings&&(view==='hour'?<HourView date={cursor} now={now} projects={visible} settings={settings} onOpen={openProject} onContext={showContext}/>:<MonthView month={cursor} now={now} projects={visible} settings={settings} onOpen={openProject} onOpenDay={date=>{setCursor(date);setView('hour')}} onContext={showContext} onDateContext={(e,date)=>{e.preventDefault();setDayContext({x:e.clientX,y:e.clientY,date})}}/>)}
+      <header className="topbar"><div className="date-title"><p className="eyebrow">工作概览</p><div><h1>{view==='hour'?format(cursor,'M月d日 EEEE',{locale:zhCN}):format(cursor,'yyyy年 M月',{locale:zhCN})}</h1><div className="date-nav"><button onClick={()=>setCursor(view==='hour'?addDays(cursor,-1):subMonths(cursor,1))}><ChevronLeft/></button><button className="today" onClick={()=>setCursor(new Date())}>今天</button><button onClick={()=>setCursor(view==='hour'?addDays(cursor,1):addMonths(cursor,1))}><ChevronRight/></button></div></div></div><div className="top-actions"><div className="segmented view-switch"><button className={view==='hour'?'active':''} onClick={()=>setView('hour')}><Clock3/>小时表</button><button className={view==='month'?'active':''} onClick={()=>setView('month')}><LayoutGrid/>月历</button></div><button className="schedule-button" onClick={()=>setScheduleOpen(true)}><Settings2/>工作日历</button><GlobalSearch query={search} open={searchOpen} projects={projectSearchResults} files={fileSearchResults} loading={searchingFiles} onQuery={value=>{setSearch(value);setSearchOpen(true)}} onFocus={()=>setSearchOpen(true)} onClose={()=>setSearchOpen(false)} onClear={clearSearch} onOpenProject={openSearchProject} onOpenFile={openSearchFile}/></div></header>
+      {settings&&(view==='hour'?<HourView date={cursor} now={now} projects={projects} settings={settings} onOpen={openProject} onContext={showContext}/>:<MonthView month={cursor} now={now} projects={projects} settings={settings} onOpen={openProject} onOpenDay={date=>{setCursor(date);setView('hour')}} onContext={showContext} onDateContext={(e,date)=>{e.preventDefault();setDayContext({x:e.clientX,y:e.clientY,date})}}/>)}
     </>}</main>
     {creating&&<CreateProject projects={projects} groups={groups} onClose={()=>setCreating(false)} onCreated={async()=>{setCreating(false);await load()}}/>}
     {settings===null&&<ScheduleModal required value={defaultSchedule} onSave={async s=>{await window.eazyflow.updateSettings(s);setSettings(s)}}/>}
     {scheduleOpen&&settings&&<ScheduleModal value={settings} onClose={()=>setScheduleOpen(false)} onSave={async s=>{await window.eazyflow.updateSettings(s);setSettings(s);setScheduleOpen(false)}}/>}
     {context&&<ContextMenu {...context} onOpen={()=>openProject(context.project)} onDelete={()=>remove(context.project)}/>}
     {dayContext&&settings&&<DayContextMenu {...dayContext} current={settings.dayOverrides?.[dateKey(dayContext.date)]} onChoose={value=>setDayOverride(dayContext.date,value)}/>}
+  </div>
+}
+
+function GlobalSearch({query,open,projects,files,loading,onQuery,onFocus,onClose,onClear,onOpenProject,onOpenFile}:{query:string;open:boolean;projects:Project[];files:GlobalSearchFileResult[];loading:boolean;onQuery:(value:string)=>void;onFocus:()=>void;onClose:()=>void;onClear:()=>void;onOpenProject:(project:Project)=>void;onOpenFile:(file:GlobalSearchFileResult)=>void}){
+  const showing=open&&Boolean(query.trim()),empty=!loading&&projects.length===0&&files.length===0
+  return <div className="global-search" onBlur={event=>{if(!event.currentTarget.contains(event.relatedTarget as Node|null))onClose()}} onKeyDown={event=>{if(event.key==='Escape'){event.preventDefault();onClear()}}}>
+    <div className="search"><Search/><input value={query} onInput={event=>onQuery(event.currentTarget.value)} onFocus={onFocus} placeholder="搜索项目或文件" aria-label="全局搜索项目或文件" aria-expanded={showing}/>{query&&<button className="search-clear" onClick={onClear} aria-label="清除搜索"><X/></button>}</div>
+    {showing&&<div className="global-search-results">
+      {projects.length>0&&<section className="global-search-section"><div className="global-search-heading"><span>项目</span><em>{projects.length}</em></div>{projects.map(project=><button className="global-search-result" key={project.id} onClick={()=>onOpenProject(project)}><i className="global-search-project-mark" style={{background:project.color}}/><span><b>{project.name}</b><small>{project.description||project.supportTarget||'打开项目详情'}</small></span></button>)}</section>}
+      {files.length>0&&<section className="global-search-section"><div className="global-search-heading"><span>文件与文件夹</span><em>{files.length}{files.length===80?'＋':''}</em></div>{files.map(file=>{const category=categories.find(item=>item.id===file.category)!,parent=file.relativePath.split('/').slice(0,-1).join(' / ');return <button className="global-search-result" key={`${file.projectId}:${file.category}:${file.relativePath}`} onClick={()=>onOpenFile(file)}>{file.kind==='folder'?<FolderOpen/>:<FileIcon/>}<span><b>{file.name}</b><small>{file.projectName} · {category.label}{parent?` / ${parent}`:''}</small></span></button>})}</section>}
+      {loading&&<div className="global-search-empty">正在搜索项目文件…</div>}
+      {empty&&<div className="global-search-empty">没有找到匹配的项目或文件</div>}
+    </div>}
   </div>
 }
 
