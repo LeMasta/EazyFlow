@@ -116,6 +116,42 @@ async function syncProjectFiles(store, project) {
   project.files = next
   return changed
 }
+async function searchProjectFiles(query) {
+  const needle = String(query || '').trim().toLocaleLowerCase('zh-CN')
+  if (!needle) return []
+  const store = await readStore(), results = []
+  for (const project of store.projects) {
+    for (const category of categories) {
+      const root = categoryPath(store, project, category).root
+      if (!(await exists(root))) continue
+      const pending = [{ directory: root, relativePath: '' }]
+      while (pending.length) {
+        const current = pending.shift()
+        const entries = await fs.readdir(current.directory, { withFileTypes: true }).catch(() => [])
+        for (const entry of entries) {
+          if (!entry.isFile() && !entry.isDirectory()) continue
+          const relativePath = path.join(current.relativePath, entry.name).split(path.sep).join('/')
+          if (entry.name.toLocaleLowerCase('zh-CN').includes(needle)) results.push({
+            projectId: project.id,
+            projectName: project.name,
+            projectColor: project.color,
+            category,
+            name: entry.name,
+            kind: entry.isDirectory() ? 'folder' : 'file',
+            relativePath
+          })
+          if (entry.isDirectory()) pending.push({ directory: path.join(current.directory, entry.name), relativePath })
+        }
+      }
+    }
+  }
+  return results.sort((left, right) => {
+    const leftName = left.name.toLocaleLowerCase('zh-CN'), rightName = right.name.toLocaleLowerCase('zh-CN')
+    const leftRank = leftName === needle ? 0 : leftName.startsWith(needle) ? 1 : 2
+    const rightRank = rightName === needle ? 0 : rightName.startsWith(needle) ? 1 : 2
+    return leftRank - rightRank || left.name.localeCompare(right.name, 'zh-CN') || left.projectName.localeCompare(right.projectName, 'zh-CN')
+  }).slice(0, 80)
+}
 async function writeStore(data) {
   const p = paths(); await fs.mkdir(p.root, { recursive: true })
   const temp = `${p.store}.tmp`; await fs.writeFile(temp, JSON.stringify(data, null, 2), 'utf8'); await fs.rename(temp, p.store)
@@ -245,6 +281,7 @@ app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) creat
 
 ipcMain.handle('store:get', readStore)
 ipcMain.handle('app:version', () => app.getVersion())
+ipcMain.handle('search:files', (_event, query) => searchProjectFiles(query))
 ipcMain.handle('project:create', async (_event, input) => {
   const store = await readStore(), folderName = await uniqueName(store.storageRoot, input.name)
   const groupId = await resolveAssociation(store, input)

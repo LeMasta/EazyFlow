@@ -14,5 +14,7 @@ import './styles-v10.css'
 import './styles-v11.css'
 import './styles-v12.css'
 import './styles-v13.css'
+import './styles-v14.css'
+import './styles-v15.css'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><App /></React.StrictMode>)

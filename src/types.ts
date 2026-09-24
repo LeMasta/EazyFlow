@@ -40,6 +40,16 @@ export interface ProjectGroup {
   createdAt: string
 }
 
+export interface GlobalSearchFileResult {
+  projectId: string
+  projectName: string
+  projectColor: string
+  category: FileCategory
+  name: string
+  kind: 'file' | 'folder'
+  relativePath: string
+}
+
 export interface WorkSettings {
   startHour: number
   endHour: number
@@ -75,6 +85,7 @@ declare global {
       importDroppedFiles: (projectId: string, category: FileCategory, files: File[], destination?: string) => Promise<ProjectFile[]>
       importClipboardFiles: (projectId: string, category: FileCategory, files: File[], destination?: string) => Promise<ProjectFile[]>
       listFolder: (projectId: string, category: FileCategory, relativePath?: string) => Promise<ProjectFile[]>
+      searchFiles: (query: string) => Promise<GlobalSearchFileResult[]>
       createFolder: (projectId: string, category: FileCategory, relativePath: string, name: string) => Promise<void>
       openFolderEntry: (projectId: string, category: FileCategory, relativePath: string) => Promise<void>
       revealFolderEntry: (projectId: string, category: FileCategory, relativePath: string) => Promise<void>
