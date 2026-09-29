@@ -12,7 +12,7 @@ const categories = new Set(['task', 'reference', 'delivery', 'other'])
 const categoryFolders = { task: '任务文件', reference: '参考文件', delivery: '交付文件', other: '其他' }
 protocol.registerSchemesAsPrivileged([{ scheme: 'eazyflow-file', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }])
 
-const seed = () => ({ projects: [], groups: [], settings: null, storageRoot: null })
+const seed = () => ({ projects: [], groups: [], supportTargets: [], settings: null, storageRoot: null })
 function paths() {
   const root = path.join(app.getPath('userData'), 'workspace')
   return { root, store: path.join(root, 'eazyflow.json'), files: path.join(root, 'projects') }
@@ -29,6 +29,31 @@ function validItemName(value) {
   if (name.length > 255 || /[<>:"/\\|?*\u0000-\u001f]/.test(name) || /[. ]$/.test(name)) throw new Error('文件名包含 Windows 不支持的字符')
   if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(name)) throw new Error('该名称是 Windows 保留名称')
   return name
+}
+function supportTargetKey(value) { return String(value || '').trim().normalize('NFKC').toLocaleLowerCase('zh-CN') }
+function validSupportTargetName(value) {
+  const name = String(value || '').trim().normalize('NFKC')
+  if (!name) throw new Error('支撑对象名称不能为空')
+  if (name.length > 80) throw new Error('支撑对象名称不能超过 80 个字符')
+  return name
+}
+function addSupportTarget(store, value, createdAt = new Date().toISOString()) {
+  const name = validSupportTargetName(value), key = supportTargetKey(name)
+  const existing = store.supportTargets.find((target) => supportTargetKey(target.name) === key)
+  if (existing) return existing
+  const target = { id: crypto.randomUUID(), name, createdAt }
+  store.supportTargets.push(target)
+  return target
+}
+function resolveProjectSupportTarget(store, input) {
+  const id = String(input.supportTargetId || '').trim()
+  const name = String(input.supportTarget || '').trim()
+  if (id) {
+    const target = store.supportTargets.find((item) => item.id === id)
+    if (!target) throw new Error('所选支撑对象不存在，请刷新后重试')
+    return target
+  }
+  return name ? addSupportTarget(store, name) : undefined
 }
 async function uniqueName(parent, desired, excludedPath) {
   const parsed = path.parse(safeName(desired, '未命名'))
@@ -164,13 +189,51 @@ async function readStore() {
     if (error?.code !== 'ENOENT' && !(error instanceof SyntaxError)) throw error
     data = seed()
   }
-  data.projects ||= []; data.groups ||= []; data.storageRoot ||= p.files
+  const hadSupportTargets = Array.isArray(data.supportTargets)
+  data.projects ||= []; data.groups ||= []; if (!hadSupportTargets) data.supportTargets = []; data.storageRoot ||= p.files
   await fs.mkdir(data.storageRoot, { recursive: true })
   if (data.settings) data.settings = {
     weekPreset: '双休', workDays: [1, 2, 3, 4, 5], bigWeekStartsThisWeek: true,
     publicHolidays: true, makeupWorkdays: true, irregularRest: false, restDates: [], dayOverrides: {}, recentProjectDays: 3, receivePrereleases: false, ...data.settings
   }
-  let migrated = false
+  let migrated = !hadSupportTargets
+  const targetsByKey = new Map(), targetsById = new Map(), normalizedTargets = []
+  for (const entry of data.supportTargets) {
+    const name = typeof entry === 'string' ? entry : entry?.name
+    if (!String(name || '').trim()) { migrated = true; continue }
+    const key = supportTargetKey(name)
+    if (targetsByKey.has(key)) { migrated = true; continue }
+    let id = typeof entry === 'object' && entry.id ? String(entry.id) : crypto.randomUUID()
+    if (targetsById.has(id)) { id = crypto.randomUUID(); migrated = true }
+    const target = {
+      id,
+      name: validSupportTargetName(name),
+      createdAt: typeof entry === 'object' && entry.createdAt ? entry.createdAt : new Date().toISOString()
+    }
+    if (typeof entry !== 'object' || !entry.id || entry.name !== target.name || !entry.createdAt) migrated = true
+    normalizedTargets.push(target); targetsByKey.set(key, target); targetsById.set(target.id, target)
+  }
+  data.supportTargets = normalizedTargets
+  for (const project of data.projects) {
+    const legacyName = String(project.supportTarget || '').trim()
+    let target = project.supportTargetId ? targetsById.get(project.supportTargetId) : undefined
+    if (!target && legacyName) {
+      const key = supportTargetKey(legacyName)
+      target = targetsByKey.get(key)
+      if (!target) {
+        target = addSupportTarget(data, legacyName, project.createdAt || new Date().toISOString())
+        targetsByKey.set(key, target); targetsById.set(target.id, target); migrated = true
+      }
+    }
+    if (target) {
+      if (project.supportTargetId !== target.id || project.supportTarget !== target.name) migrated = true
+      project.supportTargetId = target.id; project.supportTarget = target.name
+    } else {
+      if (project.supportTargetId) migrated = true
+      delete project.supportTargetId
+      if (!legacyName) delete project.supportTarget
+    }
+  }
   const reservedFolders = new Set()
   for (const project of data.projects) {
     const completed = project.status === '已完成' || project.status === '已归档'
@@ -285,7 +348,10 @@ ipcMain.handle('search:files', (_event, query) => searchProjectFiles(query))
 ipcMain.handle('project:create', async (_event, input) => {
   const store = await readStore(), folderName = await uniqueName(store.storageRoot, input.name)
   const groupId = await resolveAssociation(store, input)
+  const supportTarget = resolveProjectSupportTarget(store, input)
   const clean = { ...input }; for (const key of ['predecessorId', 'relatedProjectId', 'targetGroupId', 'groupName', 'groupColor', 'clearGroup']) delete clean[key]
+  if (supportTarget) { clean.supportTargetId = supportTarget.id; clean.supportTarget = supportTarget.name }
+  else { delete clean.supportTargetId; delete clean.supportTarget }
   const project = { ...clean, ...(groupId ? { groupId } : {}), id: crypto.randomUUID(), folderName, createdAt: new Date().toISOString(), files: [] }
   await ensureProjectFolder(store.storageRoot, folderName); store.projects.push(project); await writeStore(store); return project
 })
@@ -298,6 +364,9 @@ ipcMain.handle('project:update', async (_event, id, patch) => {
   const store = await readStore(), index = store.projects.findIndex((p) => p.id === id)
   if (index < 0) throw new Error('项目不存在')
   const project = store.projects[index], safe = { ...patch }
+  const supportTargetChanged = Object.prototype.hasOwnProperty.call(safe, 'supportTargetId') || Object.prototype.hasOwnProperty.call(safe, 'supportTarget')
+  const supportTarget = supportTargetChanged ? resolveProjectSupportTarget(store, safe) : undefined
+  delete safe.supportTargetId; delete safe.supportTarget
   const associationChanged = ['relatedProjectId', 'targetGroupId', 'groupName', 'clearGroup'].some((key) => Object.prototype.hasOwnProperty.call(safe, key))
   const nextGroupId = associationChanged ? await resolveAssociation(store, safe, project) : project.groupId
   for (const key of ['predecessorId', 'relatedProjectId', 'targetGroupId', 'groupName', 'groupColor', 'clearGroup', 'id', 'files', 'createdAt', 'folderName', 'groupId']) delete safe[key]
@@ -307,9 +376,38 @@ ipcMain.handle('project:update', async (_event, id, patch) => {
     if (nextFolder !== project.folderName) await fs.rename(oldPath, path.join(store.storageRoot, nextFolder))
     project.folderName = nextFolder
   }
+  if (supportTargetChanged) {
+    delete project.supportTargetId; delete project.supportTarget
+    if (supportTarget) { project.supportTargetId = supportTarget.id; project.supportTarget = supportTarget.name }
+  }
   store.projects[index] = { ...project, ...safe }
   store.groups = store.groups.filter((group) => store.projects.some((item) => item.groupId === group.id))
   await writeStore(store); return store.projects[index]
+})
+ipcMain.handle('support-target:create', async (_event, rawName) => {
+  const store = await readStore(), name = validSupportTargetName(rawName)
+  const existing = store.supportTargets.find((target) => supportTargetKey(target.name) === supportTargetKey(name))
+  if (existing) return existing
+  const target = addSupportTarget(store, name)
+  await writeStore(store); return target
+})
+ipcMain.handle('support-target:update', async (_event, id, rawName) => {
+  const store = await readStore(), target = store.supportTargets.find((item) => item.id === id)
+  if (!target) throw new Error('支撑对象不存在')
+  const name = validSupportTargetName(rawName)
+  const duplicate = store.supportTargets.find((item) => item.id !== id && supportTargetKey(item.name) === supportTargetKey(name))
+  if (duplicate) throw new Error('已存在同名支撑对象，请选择现有标签')
+  target.name = name
+  for (const project of store.projects) if (project.supportTargetId === id) project.supportTarget = name
+  await writeStore(store); return target
+})
+ipcMain.handle('support-target:delete', async (_event, id) => {
+  const store = await readStore(), target = store.supportTargets.find((item) => item.id === id)
+  if (!target) throw new Error('支撑对象不存在')
+  const inUse = store.projects.filter((project) => project.supportTargetId === id).length
+  if (inUse) throw new Error(`该支撑对象仍关联 ${inUse} 个项目，请先为这些项目改选其他对象`)
+  store.supportTargets = store.supportTargets.filter((item) => item.id !== id)
+  await writeStore(store)
 })
 ipcMain.handle('project:delete', async (_event, id) => {
   const store = await readStore(), project = store.projects.find((p) => p.id === id)
