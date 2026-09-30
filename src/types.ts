@@ -20,6 +20,7 @@ export interface Project {
   name: string
   description: string
   supportTarget?: string
+  supportTargetId?: string
   color: string
   status: ProjectStatus
   startAt: string
@@ -37,6 +38,12 @@ export interface ProjectGroup {
   name: string
   description: string
   color: string
+  createdAt: string
+}
+
+export interface SupportTarget {
+  id: string
+  name: string
   createdAt: string
 }
 
@@ -67,7 +74,7 @@ export interface WorkSettings {
   receivePrereleases: boolean
 }
 
-export interface StoreSnapshot { projects: Project[]; groups: ProjectGroup[]; settings: WorkSettings | null; storageRoot: string }
+export interface StoreSnapshot { projects: Project[]; groups: ProjectGroup[]; supportTargets: SupportTarget[]; settings: WorkSettings | null; storageRoot: string }
 
 declare global {
   interface Window {
@@ -76,6 +83,9 @@ declare global {
       getAppVersion: () => Promise<string>
       createProject: (project: Omit<Project, 'id' | 'createdAt' | 'files'> & { relatedProjectId?: string; targetGroupId?: string; groupName?: string; groupColor?: string }) => Promise<Project>
       updateProject: (id: string, patch: Partial<Project> & { relatedProjectId?: string; targetGroupId?: string; groupName?: string; groupColor?: string; clearGroup?: boolean }) => Promise<Project>
+      createSupportTarget: (name: string) => Promise<SupportTarget>
+      updateSupportTarget: (id: string, name: string) => Promise<SupportTarget>
+      deleteSupportTarget: (id: string) => Promise<void>
       updateGroup: (id: string, patch: Partial<ProjectGroup>) => Promise<ProjectGroup>
       deleteProject: (id: string) => Promise<void>
       touchProject: (id: string) => Promise<void>
