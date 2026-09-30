@@ -83,6 +83,25 @@
 .image-gallery { padding-top: 4px; }
 .image-card { border-radius: 12px; }
 
+/* Timeline bubbles are opened by double-click; keep hover feedback calm and stationary. */
+.hour-card .horizontal-bubble {
+  transition: background-color .12s ease;
+}
+.hour-card .horizontal-bubble:hover,
+.hour-card .horizontal-bubble:focus-visible,
+.hour-card .horizontal-bubble:active {
+  transform: translateY(-50%);
+  box-shadow: 0 7px 20px #30244212;
+  filter: none;
+}
+.hour-card .horizontal-bubble:hover {
+  background-color: color-mix(in srgb, var(--bubble) 24%, white);
+}
+.hour-card .horizontal-bubble:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--bubble) 70%, white);
+  outline-offset: 2px;
+}
+
 @media (max-width: 1180px) {
   .project-page { padding-inline: 25px; }
   .project-hero { display: flex; flex-direction: column; align-items: stretch; gap: 13px; }
