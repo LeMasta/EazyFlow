@@ -83,9 +83,9 @@
 .image-gallery { padding-top: 4px; }
 .image-card { border-radius: 12px; }
 
-/* Timeline bubbles are opened by double-click; keep hover feedback calm and stationary. */
+/* Timeline bubbles open on double-click; retain a subtle hover cue without a pronounced lift. */
 .hour-card .horizontal-bubble {
-  transition: background-color .12s ease;
+  transition: background-color .16s ease, transform .16s ease, box-shadow .16s ease;
 }
 .hour-card .horizontal-bubble:hover,
 .hour-card .horizontal-bubble:focus-visible,
@@ -96,6 +96,8 @@
 }
 .hour-card .horizontal-bubble:hover {
   background-color: color-mix(in srgb, var(--bubble) 24%, white);
+  transform: translateY(calc(-50% - 1px));
+  box-shadow: 0 8px 21px #30244216;
 }
 .hour-card .horizontal-bubble:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--bubble) 70%, white);
