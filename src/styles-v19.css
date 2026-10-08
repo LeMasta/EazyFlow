@@ -10,7 +10,7 @@
 
 /* A single palette drives the interface; status colors remain semantic. */
 body { background: var(--theme-sidebar); }
-.app-shell { grid-template-columns: 236px minmax(0, 1fr); transition: grid-template-columns .18s ease; }
+.app-shell { grid-template-columns: 236px minmax(0, 1fr); }
 .app-shell.sidebar-collapsed { grid-template-columns: 76px minmax(0, 1fr); }
 .sidebar { background: var(--theme-sidebar); color: var(--theme-sidebar-ink); }
 .sidebar .brand, .sidebar nav button, .sidebar-bottom button { color: var(--theme-sidebar-ink); }
@@ -55,15 +55,16 @@ main { background: radial-gradient(ellipse at 84% 3%, color-mix(in srgb, var(--t
 }
 .sidebar-toggle:hover { background: color-mix(in srgb, var(--theme-accent) 24%, transparent); color: var(--theme-sidebar-ink); }
 .sidebar-toggle svg { width: 17px; height: 17px; }
+.sidebar-toggle, .sidebar-create, .sidebar nav button, .sidebar-bottom button { transition: color .1s ease, background-color .1s ease, opacity .08s ease-out; }
 .sidebar nav button, .sidebar-bottom button { gap: 12px; }
 .sidebar nav button > span, .sidebar-bottom button > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sidebar nav .recent-projects button { gap: 10px; }
 .sidebar nav .recent-projects button > i { flex: none; }
-.sidebar.collapsed { padding: 21px 8px 16px; }
-.sidebar.collapsed .brand { display: flex; flex-direction: column; gap: 8px; padding: 0 0 21px; }
-.sidebar.collapsed .brand-mark { width: 35px; height: 35px; }
+.sidebar.collapsed { position: relative; padding: 18px 4px 16px; }
+.sidebar.collapsed .brand { display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 4px; padding: 0 0 21px; }
+.sidebar.collapsed .brand-mark { width: 32px; height: 32px; }
 .sidebar.collapsed .brand > span, .sidebar.collapsed nav .nav-caption, .sidebar.collapsed nav .recent-projects button > span, .sidebar.collapsed nav .recent-projects > small { display: none; }
-.sidebar.collapsed .sidebar-toggle { width: 34px; height: 30px; margin: 0; }
+.sidebar.collapsed .sidebar-toggle { position: static; z-index: auto; width: 26px; height: 26px; margin: 0; border: 0; background: transparent; box-shadow: none; }
 .sidebar.collapsed .sidebar-create { width: 48px; min-width: 0; height: 44px; min-height: 44px; margin-inline: auto; padding: 0; justify-content: center; }
 .sidebar.collapsed .sidebar-create > span { display: none; }
 .sidebar.collapsed nav { margin-top: 18px; }
@@ -101,8 +102,8 @@ main { background: radial-gradient(ellipse at 84% 3%, color-mix(in srgb, var(--t
 .theme-color-control > span:last-child { display: flex; align-items: center; gap: 8px; }
 .theme-color-control input[type=color] { width: 31px; height: 27px; padding: 2px; border: 1px solid var(--line); border-radius: 7px; background: var(--theme-surface); cursor: pointer; }
 .theme-color-control code { color: #97919f; font-size: 10px; }
-.update-advanced .settings-card-actions { flex: none; }
 .update-advanced .switch-control { margin-top: 12px; }
+.update-card .settings-card-actions { align-self: center; }
 
 @media (max-width: 980px) {
   .app-shell.sidebar-collapsed { grid-template-columns: 76px minmax(0, 1fr); }
@@ -111,5 +112,5 @@ main { background: radial-gradient(ellipse at 84% 3%, color-mix(in srgb, var(--t
 @media (max-width: 680px) {
   .theme-presets { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .advanced-option { align-items: flex-start; flex-direction: column; }
-  .update-advanced .settings-card-actions { width: 100%; flex-wrap: wrap; }
+  .update-card .settings-card-actions { width: 100%; flex-wrap: wrap; }
 }
