@@ -60,11 +60,11 @@ main { background: radial-gradient(ellipse at 84% 3%, color-mix(in srgb, var(--t
 .sidebar nav button > span, .sidebar-bottom button > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sidebar nav .recent-projects button { gap: 10px; }
 .sidebar nav .recent-projects button > i { flex: none; }
-.sidebar.collapsed { position: relative; padding: 21px 8px 16px; }
-.sidebar.collapsed .brand { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 0 0 21px; }
-.sidebar.collapsed .brand-mark { width: 35px; height: 35px; }
+.sidebar.collapsed { position: relative; padding: 18px 4px 16px; }
+.sidebar.collapsed .brand { display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 4px; padding: 0 0 21px; }
+.sidebar.collapsed .brand-mark { width: 32px; height: 32px; }
 .sidebar.collapsed .brand > span, .sidebar.collapsed nav .nav-caption, .sidebar.collapsed nav .recent-projects button > span, .sidebar.collapsed nav .recent-projects > small { display: none; }
-.sidebar.collapsed .sidebar-toggle { position: absolute; top: 32px; right: -13px; z-index: 20; width: 28px; height: 28px; margin: 0; border: 1px solid color-mix(in srgb, var(--theme-sidebar-ink) 16%, transparent); background: var(--theme-sidebar); box-shadow: 0 2px 8px #17151d30; }
+.sidebar.collapsed .sidebar-toggle { position: static; z-index: auto; width: 26px; height: 26px; margin: 0; border: 0; background: transparent; box-shadow: none; }
 .sidebar.collapsed .sidebar-create { width: 48px; min-width: 0; height: 44px; min-height: 44px; margin-inline: auto; padding: 0; justify-content: center; }
 .sidebar.collapsed .sidebar-create > span { display: none; }
 .sidebar.collapsed nav { margin-top: 18px; }
@@ -102,8 +102,8 @@ main { background: radial-gradient(ellipse at 84% 3%, color-mix(in srgb, var(--t
 .theme-color-control > span:last-child { display: flex; align-items: center; gap: 8px; }
 .theme-color-control input[type=color] { width: 31px; height: 27px; padding: 2px; border: 1px solid var(--line); border-radius: 7px; background: var(--theme-surface); cursor: pointer; }
 .theme-color-control code { color: #97919f; font-size: 10px; }
-.update-advanced .settings-card-actions { flex: none; }
 .update-advanced .switch-control { margin-top: 12px; }
+.update-card .settings-card-actions { align-self: center; }
 
 @media (max-width: 980px) {
   .app-shell.sidebar-collapsed { grid-template-columns: 76px minmax(0, 1fr); }
@@ -112,5 +112,5 @@ main { background: radial-gradient(ellipse at 84% 3%, color-mix(in srgb, var(--t
 @media (max-width: 680px) {
   .theme-presets { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .advanced-option { align-items: flex-start; flex-direction: column; }
-  .update-advanced .settings-card-actions { width: 100%; flex-wrap: wrap; }
+  .update-card .settings-card-actions { width: 100%; flex-wrap: wrap; }
 }
