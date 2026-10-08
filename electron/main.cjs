@@ -194,7 +194,11 @@ async function readStore() {
   await fs.mkdir(data.storageRoot, { recursive: true })
   if (data.settings) data.settings = {
     weekPreset: '双休', workDays: [1, 2, 3, 4, 5], bigWeekStartsThisWeek: true,
-    publicHolidays: true, makeupWorkdays: true, irregularRest: false, restDates: [], dayOverrides: {}, recentProjectDays: 3, receivePrereleases: false, ...data.settings
+    publicHolidays: true, makeupWorkdays: true, irregularRest: false, restDates: [], dayOverrides: {}, recentProjectDays: 3, receivePrereleases: false,
+    sidebarCollapsed: false, appearancePreset: 'violet', customAppearanceEnabled: false,
+    customAppearance: { accent: '#6652c8', page: '#f7f6fa', surface: '#ffffff', sidebar: '#24232c', tag: '#f2effa' },
+    ...data.settings,
+    customAppearance: { accent: '#6652c8', page: '#f7f6fa', surface: '#ffffff', sidebar: '#24232c', tag: '#f2effa', ...(data.settings.customAppearance || {}) }
   }
   let migrated = !hadSupportTargets
   const targetsByKey = new Map(), targetsById = new Map(), normalizedTargets = []
@@ -434,7 +438,18 @@ ipcMain.handle('group:update', async (_event, id, patch) => {
 ipcMain.handle('settings:update', async (_event, settings) => {
   const values = ['startHour', 'endHour', 'breakStart', 'breakEnd'].map((key) => Number(settings[key]))
   if (values.some((value) => !Number.isFinite(value)) || values[0] < 0 || values[1] > 24 || values[0] >= values[1] || values[2] < values[0] || values[3] > values[1] || values[2] >= values[3]) throw new Error('工作时间设置无效')
-  const normalized = { ...settings, receivePrereleases: settings.receivePrereleases === true }
+  const presets = new Set(['violet', 'sage', 'ocean', 'amber'])
+  const colorDefaults = { accent: '#6652c8', page: '#f7f6fa', surface: '#ffffff', sidebar: '#24232c', tag: '#f2effa' }
+  const rawColors = settings.customAppearance && typeof settings.customAppearance === 'object' ? settings.customAppearance : {}
+  const customAppearance = Object.fromEntries(Object.entries(colorDefaults).map(([key, fallback]) => [key, /^#[0-9a-f]{6}$/i.test(rawColors[key]) ? rawColors[key] : fallback]))
+  const normalized = {
+    ...settings,
+    receivePrereleases: settings.receivePrereleases === true,
+    sidebarCollapsed: settings.sidebarCollapsed === true,
+    appearancePreset: presets.has(settings.appearancePreset) ? settings.appearancePreset : 'violet',
+    customAppearanceEnabled: settings.customAppearanceEnabled === true,
+    customAppearance
+  }
   const store = await readStore(); store.settings = normalized; await writeStore(store); configureUpdateChannel(normalized); return normalized
 })
 async function importPaths(projectId, category, sourcePaths, destination = '') {

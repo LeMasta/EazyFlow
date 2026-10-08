@@ -72,6 +72,16 @@ export interface WorkSettings {
   dayOverrides: Record<string, DayOverride>
   recentProjectDays: number
   receivePrereleases: boolean
+  sidebarCollapsed: boolean
+  appearancePreset: 'violet' | 'sage' | 'ocean' | 'amber'
+  customAppearanceEnabled: boolean
+  customAppearance: {
+    accent: string
+    page: string
+    surface: string
+    sidebar: string
+    tag: string
+  }
 }
 
 export interface StoreSnapshot { projects: Project[]; groups: ProjectGroup[]; supportTargets: SupportTarget[]; settings: WorkSettings | null; storageRoot: string }
