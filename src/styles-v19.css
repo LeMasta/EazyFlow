@@ -10,7 +10,7 @@
 
 /* A single palette drives the interface; status colors remain semantic. */
 body { background: var(--theme-sidebar); }
-.app-shell { grid-template-columns: 236px minmax(0, 1fr); transition: grid-template-columns .18s ease; }
+.app-shell { grid-template-columns: 236px minmax(0, 1fr); }
 .app-shell.sidebar-collapsed { grid-template-columns: 76px minmax(0, 1fr); }
 .sidebar { background: var(--theme-sidebar); color: var(--theme-sidebar-ink); }
 .sidebar .brand, .sidebar nav button, .sidebar-bottom button { color: var(--theme-sidebar-ink); }
@@ -55,15 +55,16 @@ main { background: radial-gradient(ellipse at 84% 3%, color-mix(in srgb, var(--t
 }
 .sidebar-toggle:hover { background: color-mix(in srgb, var(--theme-accent) 24%, transparent); color: var(--theme-sidebar-ink); }
 .sidebar-toggle svg { width: 17px; height: 17px; }
+.sidebar-toggle, .sidebar-create, .sidebar nav button, .sidebar-bottom button { transition: color .1s ease, background-color .1s ease, opacity .08s ease-out; }
 .sidebar nav button, .sidebar-bottom button { gap: 12px; }
 .sidebar nav button > span, .sidebar-bottom button > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sidebar nav .recent-projects button { gap: 10px; }
 .sidebar nav .recent-projects button > i { flex: none; }
-.sidebar.collapsed { padding: 21px 8px 16px; }
-.sidebar.collapsed .brand { display: flex; flex-direction: column; gap: 8px; padding: 0 0 21px; }
+.sidebar.collapsed { position: relative; padding: 21px 8px 16px; }
+.sidebar.collapsed .brand { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 0 0 21px; }
 .sidebar.collapsed .brand-mark { width: 35px; height: 35px; }
 .sidebar.collapsed .brand > span, .sidebar.collapsed nav .nav-caption, .sidebar.collapsed nav .recent-projects button > span, .sidebar.collapsed nav .recent-projects > small { display: none; }
-.sidebar.collapsed .sidebar-toggle { width: 34px; height: 30px; margin: 0; }
+.sidebar.collapsed .sidebar-toggle { position: absolute; top: 32px; right: -13px; z-index: 20; width: 28px; height: 28px; margin: 0; border: 1px solid color-mix(in srgb, var(--theme-sidebar-ink) 16%, transparent); background: var(--theme-sidebar); box-shadow: 0 2px 8px #17151d30; }
 .sidebar.collapsed .sidebar-create { width: 48px; min-width: 0; height: 44px; min-height: 44px; margin-inline: auto; padding: 0; justify-content: center; }
 .sidebar.collapsed .sidebar-create > span { display: none; }
 .sidebar.collapsed nav { margin-top: 18px; }

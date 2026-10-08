@@ -377,7 +377,13 @@ ipcMain.handle('project:update', async (_event, id, patch) => {
   if (associationChanged) { if (nextGroupId) safe.groupId = nextGroupId; else delete project.groupId }
   if (typeof safe.name === 'string' && safe.name.trim() && safe.name !== project.name) {
     const oldPath = path.join(store.storageRoot, project.folderName), nextFolder = await uniqueName(store.storageRoot, safe.name, oldPath)
-    if (nextFolder !== project.folderName) await fs.rename(oldPath, path.join(store.storageRoot, nextFolder))
+    if (nextFolder !== project.folderName) {
+      try { await fs.rename(oldPath, path.join(store.storageRoot, nextFolder)) }
+      catch (error) {
+        if (error.code !== 'ENOENT') throw error
+        await ensureProjectFolder(store.storageRoot, nextFolder)
+      }
+    }
     project.folderName = nextFolder
   }
   if (supportTargetChanged) {
