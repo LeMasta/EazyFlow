@@ -1,0 +1,87 @@
+/* Dialogs must sit above the draggable title strip and remain fully interactive. */
+.window-drag-region { z-index: 20; }
+.modal-backdrop { z-index: 1200; -webkit-app-region: no-drag; }
+.modal-backdrop, .modal-backdrop * { -webkit-app-region: no-drag; }
+.modal { position: relative; z-index: 1; max-height: calc(100vh - 48px); overflow-y: auto; overscroll-behavior: contain; }
+
+/* Keep the collapsed rail control quiet until the rail is in use. */
+.sidebar.collapsed .brand { position: relative; justify-content: center; }
+.sidebar.collapsed .sidebar-toggle {
+  position: absolute; top: 7px; right: 0; width: 22px; height: 22px; padding: 0;
+  border-radius: 7px; color: var(--theme-sidebar-muted); opacity: .14;
+  transition: opacity .16s ease, color .16s ease, background-color .16s ease;
+}
+.sidebar.collapsed:hover .sidebar-toggle,
+.sidebar.collapsed:focus-within .sidebar-toggle { opacity: .76; }
+.sidebar.collapsed .sidebar-toggle:hover,
+.sidebar.collapsed .sidebar-toggle:focus-visible { opacity: 1; background: color-mix(in srgb, var(--theme-accent) 24%, transparent); }
+.sidebar.collapsed .sidebar-toggle svg { width: 15px; height: 15px; }
+
+/* Searchable, readable association choices inside project forms. */
+.relation-field { display: grid; gap: 7px; margin-top: 16px; color: #55505e; font-size: 11px; font-weight: 650; }
+.relation-field > span { display: inline-flex; align-items: center; gap: 6px; }
+.relation-field > span svg { width: 14px; height: 14px; color: var(--theme-accent); }
+.relation-field > small { color: #918b99; font-size: 10px; font-weight: 450; }
+.relation-picker { position: relative; z-index: 1; min-width: 0; }
+.relation-picker.open { z-index: 20; }
+.relation-picker-trigger {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 48px;
+  padding: 8px 12px; border: 1px solid #e4e0eb; border-radius: 10px; background: #fbfaff; color: #393443; text-align: left;
+}
+.relation-picker-trigger:hover { border-color: color-mix(in srgb, var(--theme-accent) 36%, #e4e0eb); background: #fff; }
+.relation-picker-trigger > span { display: grid; min-width: 0; gap: 3px; }
+.relation-picker-trigger b { overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.relation-picker-trigger small { overflow: hidden; color: #898393; font-size: 9px; font-weight: 450; text-overflow: ellipsis; white-space: nowrap; }
+.relation-picker-trigger > svg { width: 15px; height: 15px; flex: none; color: #918b99; transition: transform .15s ease; }
+.relation-picker-trigger > svg.turned { transform: rotate(90deg); }
+.relation-picker-popover {
+  position: fixed; z-index: 1300; display: flex; flex-direction: column; overflow: hidden;
+  border: 1px solid #e5e1ec; border-radius: 12px; background: #fff; box-shadow: 0 14px 36px #28213424;
+}
+.relation-picker-search { display: flex; align-items: center; flex: none; gap: 8px; min-height: 38px; margin: 8px; padding: 0 10px; border: 1px solid #e9e6ef; border-radius: 8px; background: #faf9fc; color: #898392; }
+.relation-picker-search svg { width: 14px; height: 14px; flex: none; }
+.relation-picker-search input { width: 100%; min-width: 0; padding: 0; border: 0; outline: 0; background: transparent; color: #393443; font-size: 10px; box-shadow: none !important; }
+.relation-picker-options { display: grid; min-height: 0; max-height: none; overflow: auto; padding: 0 6px 6px; }
+.relation-picker-options > strong { padding: 8px 8px 4px; color: #9992a3; font-size: 9px; font-weight: 650; }
+.relation-picker-options > button { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; min-height: 43px; padding: 7px 9px; border: 0; border-radius: 8px; background: transparent; color: #45404e; text-align: left; }
+.relation-picker-options > button:hover { background: #f5f2fb; }
+.relation-picker-options > button[aria-selected="true"] { background: var(--theme-tag); color: var(--theme-accent); }
+.relation-picker-options > button > span { display: grid; min-width: 0; gap: 3px; }
+.relation-picker-options > button b { overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.relation-picker-options > button small { overflow: hidden; color: #918b99; font-size: 9px; font-weight: 450; text-overflow: ellipsis; white-space: nowrap; }
+.relation-picker-options > button em { flex: none; color: #8f8899; font-size: 9px; font-style: normal; }
+.relation-picker-options > button > svg { width: 13px; height: 13px; flex: none; color: #8e8798; }
+.relation-picker-empty { padding: 12px 9px; color: #918b99; font-size: 10px; }
+
+/* Make support-tag editing available where the selected tag is displayed. */
+.support-detail-header { flex-wrap: wrap; }
+.support-detail-edit { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 32px; padding: 0 10px; border: 1px solid #e5e1ec; border-radius: 9px; background: #fff; color: #6552b7; font-size: 10px; font-weight: 650; }
+.support-detail-edit:hover { border-color: #d4ccec; background: #f5f2fb; }
+.support-detail-edit svg { width: 13px; height: 13px; }
+
+/* The multi-select toolbar and selection state stay visually tied to the files. */
+.bulk-selection-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; margin: 4px 0 12px; padding: 8px 10px; border: 1px solid #e8e4ef; border-radius: 11px; background: #faf9fd; color: #6e6877; font-size: 10px; }
+.bulk-selection-toolbar > span { margin-right: auto; }
+.bulk-selection-toolbar > span b { color: var(--theme-accent); font-size: 12px; }
+.bulk-selection-toolbar button { min-height: 30px; padding: 0 9px; font-size: 10px; }
+.bulk-selection-toolbar button svg { width: 13px; height: 13px; }
+.bulk-selection-toolbar button:disabled { cursor: default; opacity: .42; }
+.danger-button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; border: 1px solid #efdadd; border-radius: 9px; background: #fff7f7; color: #b64a54; }
+.danger-button:not(:disabled):hover { border-color: #e8c3c7; background: #fcebed; }
+.file-select-checkbox { width: 16px; height: 16px; flex: none; margin: 0; accent-color: var(--theme-accent); cursor: pointer; }
+.file-row .file-select-checkbox { margin-left: 2px; }
+.image-card.selection-active { position: relative; }
+.image-card.selection-active > .file-select-checkbox { position: absolute; z-index: 2; top: 9px; left: 9px; width: 18px; height: 18px; }
+.image-card.selected-file, .file-row.selected-file { outline: 2px solid color-mix(in srgb, var(--theme-accent) 40%, transparent); outline-offset: -2px; background: color-mix(in srgb, var(--theme-tag) 56%, white); }
+.folder-breadcrumb { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+.folder-breadcrumb > span { display: inline-flex; align-items: center; gap: 4px; }
+.folder-breadcrumb svg { width: 12px; height: 12px; color: #aaa4b2; }
+.folder-breadcrumb button { padding: 3px 5px; border: 0; border-radius: 6px; background: transparent; color: #726c7e; font-size: 10px; }
+.folder-breadcrumb button:hover { background: var(--theme-tag); color: var(--theme-accent); }
+
+@media (max-width: 760px) {
+  .support-detail-header { align-items: flex-start; }
+  .support-project-count { margin-left: auto; }
+  .support-detail-edit { margin-left: 63px; }
+  .bulk-selection-toolbar > span { width: 100%; }
+}

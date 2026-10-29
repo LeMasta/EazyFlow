@@ -117,6 +117,9 @@ declare global {
       openFile: (projectId: string, fileId: string) => Promise<void>
       revealFile: (projectId: string, fileId: string) => Promise<void>
       copyFile: (projectId: string, fileId: string) => Promise<string>
+      copyEntries: (projectId: string, category: FileCategory, entries: Array<{id: string; relativePath?: string}>) => Promise<string[]>
+      deleteEntries: (projectId: string, category: FileCategory, entries: Array<{id: string; relativePath?: string}>) => Promise<number>
+      extractZipFiles: (projectId: string, category: FileCategory, entries: Array<{id: string; relativePath?: string}>) => Promise<string[]>
       renameFile: (projectId: string, fileId: string, name: string) => Promise<ProjectFile>
       deleteFile: (projectId: string, fileId: string) => Promise<void>
       controlWindow: (action: 'minimize' | 'maximize' | 'close') => Promise<void>
