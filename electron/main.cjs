@@ -6,7 +6,8 @@ const crypto = require('node:crypto')
 const { pathToFileURL } = require('node:url')
 const { spawn } = require('node:child_process')
 
-let mainWindow, viewerWindow
+let mainWindow, viewerWindow, clipboardWorker, clipboardWorkerStart, clipboardWorkerOutput = '', clipboardRequestId = 0, clipboardWorkerReady = false
+const pendingClipboardRequests = new Map()
 const isDev = Boolean(process.env.EAZYFLOW_DEV_URL)
 const categories = new Set(['task', 'reference', 'delivery', 'other'])
 const categoryFolders = { task: '任务文件', reference: '参考文件', delivery: '交付文件', other: '其他' }
@@ -142,7 +143,7 @@ async function syncProjectFiles(store, project) {
   return changed
 }
 async function searchProjectFiles(query) {
-  const needle = String(query || '').trim().toLocaleLowerCase('zh-CN')
+  const needle = String(query || '').trim().normalize('NFKC').toLocaleLowerCase('zh-CN')
   if (!needle) return []
   const store = await readStore(), results = []
   for (const project of store.projects) {
@@ -150,13 +151,13 @@ async function searchProjectFiles(query) {
       const root = categoryPath(store, project, category).root
       if (!(await exists(root))) continue
       const pending = [{ directory: root, relativePath: '' }]
-      while (pending.length) {
-        const current = pending.shift()
+      for (let cursor = 0; cursor < pending.length; cursor++) {
+        const current = pending[cursor]
         const entries = await fs.readdir(current.directory, { withFileTypes: true }).catch(() => [])
         for (const entry of entries) {
           if (!entry.isFile() && !entry.isDirectory()) continue
           const relativePath = path.join(current.relativePath, entry.name).split(path.sep).join('/')
-          if (entry.name.toLocaleLowerCase('zh-CN').includes(needle)) results.push({
+          if (`${entry.name} ${relativePath}`.normalize('NFKC').toLocaleLowerCase('zh-CN').includes(needle)) results.push({
             projectId: project.id,
             projectName: project.name,
             projectColor: project.color,
@@ -294,17 +295,93 @@ async function findFile(projectId, fileId) {
   if (!project || !file) throw new Error('文件或文件夹不存在')
   return { store, project, file, filePath: itemPath(store, project, file) }
 }
+async function resolveSelectedEntries(projectId, category, entries) {
+  if (!categories.has(category)) throw new Error('无效文件分类')
+  if (!Array.isArray(entries) || entries.length === 0 || entries.length > 500) throw new Error('请选择 1 到 500 个项目文件')
+  const store = await readStore(), project = store.projects.find((item) => item.id === projectId)
+  if (!project) throw new Error('项目不存在')
+  const resolved = []
+  for (const entry of entries) {
+    let target, name
+    if (typeof entry?.relativePath === 'string' && entry.relativePath) {
+      ({ target } = categoryPath(store, project, category, entry.relativePath))
+      name = path.basename(target)
+    } else {
+      const file = project.files.find((item) => item.id === entry?.id && item.category === category)
+      if (!file) throw new Error('所选文件已不存在，请刷新后重试')
+      target = itemPath(store, project, file); name = file.name
+    }
+    const { root } = categoryPath(store, project, category), relative = path.relative(root, target)
+    if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) throw new Error('所选文件路径无效')
+    const stat = await fs.stat(target).catch(() => null)
+    if (!stat || (!stat.isFile() && !stat.isDirectory())) throw new Error(`文件不存在：${name}`)
+    resolved.push({ path: target, name, isDirectory: stat.isDirectory() })
+  }
+  const samePath = (left, right) => process.platform === 'win32' ? path.resolve(left).toLowerCase() === path.resolve(right).toLowerCase() : path.resolve(left) === path.resolve(right)
+  const isChildOf = (parent, child) => {
+    const relative = path.relative(parent, child)
+    return Boolean(relative && relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative))
+  }
+  return resolved.filter((entry, index) => !resolved.some((other, otherIndex) => otherIndex !== index && (samePath(other.path, entry.path) || other.isDirectory && isChildOf(other.path, entry.path))))
+}
 
-function copyWindowsPaths(filePaths) {
+function ensureClipboardWorker() {
+  if (process.platform !== 'win32') return Promise.resolve()
+  if (clipboardWorker && !clipboardWorker.killed) return clipboardWorkerReady ? Promise.resolve() : clipboardWorkerStart || Promise.resolve()
+  clipboardWorkerOutput = ''
+  clipboardWorkerReady = false
+  const script = `$ErrorActionPreference='Stop'; Add-Type -AssemblyName System.Windows.Forms; [Console]::Out.WriteLine('READY'); while($line=[Console]::In.ReadLine()){ $parts=$line.Split(':',2); $id=$parts[0]; try { $json=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($parts[1])); $paths=@(ConvertFrom-Json -InputObject $json); $list=New-Object System.Collections.Specialized.StringCollection; foreach($item in $paths){[void]$list.Add([string]$item)}; $ok=$false; for($i=0;$i -lt 8 -and -not $ok;$i++){try{[Windows.Forms.Clipboard]::SetFileDropList($list);$ok=$true}catch{Start-Sleep -Milliseconds 35}}; if($ok){[Console]::Out.WriteLine("$id OK")}else{[Console]::Out.WriteLine("$id ERR")} } catch { [Console]::Out.WriteLine("$id ERR") } }`
+  const encoded = Buffer.from(script, 'utf16le').toString('base64')
+  const child = spawn('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-STA', '-WindowStyle', 'Hidden', '-EncodedCommand', encoded], { windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] })
+  clipboardWorker = child
+  let resolveReady, rejectReady, readySettled = false
+  const failReady = (error) => { if (!readySettled) { readySettled = true; rejectReady(error) } }
+  clipboardWorkerStart = new Promise((resolve, reject) => { resolveReady = resolve; rejectReady = reject }).finally(() => { clipboardWorkerStart = undefined })
+  child.stdout.setEncoding('utf8')
+  child.stdout.on('data', (chunk) => {
+    clipboardWorkerOutput += chunk
+    const lines = clipboardWorkerOutput.split(/\r?\n/)
+    clipboardWorkerOutput = lines.pop() || ''
+    for (const line of lines) {
+      if (line.trim() === 'READY') { clipboardWorkerReady = true; readySettled = true; resolveReady(); continue }
+      const match = /^(\d+) (OK|ERR)$/.exec(line.trim())
+      if (!match) continue
+      const pending = pendingClipboardRequests.get(Number(match[1]))
+      if (!pending) continue
+      pendingClipboardRequests.delete(Number(match[1]))
+      match[2] === 'OK' ? pending.resolve() : pending.reject(new Error('无法写入 Windows 文件剪贴板，请重试'))
+    }
+  })
+  child.once('error', (error) => { if (clipboardWorker === child) clipboardWorker = undefined; clipboardWorkerReady = false; failReady(error) })
+  child.on('close', () => {
+    if (clipboardWorker === child) { clipboardWorker = undefined; clipboardWorkerReady = false }
+    failReady(new Error('Windows 文件剪贴板服务启动失败'))
+    for (const [id, pending] of pendingClipboardRequests) { pendingClipboardRequests.delete(id); pending.reject(new Error('Windows 文件剪贴板服务已退出，请重试')) }
+  })
+  return clipboardWorkerStart
+}
+async function copyWindowsPaths(filePaths) {
+  await ensureClipboardWorker()
+  const child = clipboardWorker
+  if (!child || child.killed || !child.stdin.writable) throw new Error('Windows 文件剪贴板服务未就绪，请重试')
+  const id = ++clipboardRequestId, payload = Buffer.from(JSON.stringify(filePaths), 'utf8').toString('base64')
   return new Promise((resolve, reject) => {
-    const payload = Buffer.from(JSON.stringify(filePaths), 'utf8').toString('base64')
-    const script = `$ErrorActionPreference='Stop'; Add-Type -AssemblyName System.Windows.Forms; $json=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${payload}')); $paths=ConvertFrom-Json $json; $list=New-Object System.Collections.Specialized.StringCollection; foreach($item in @($paths)){[void]$list.Add([string]$item)}; for($i=0;$i -lt 4;$i++){try{[Windows.Forms.Clipboard]::SetFileDropList($list); exit 0}catch{if($i -eq 3){throw}; Start-Sleep -Milliseconds 80}}`
-    const encoded = Buffer.from(script, 'utf16le').toString('base64')
+    pendingClipboardRequests.set(id, { resolve, reject })
+    child.stdin.write(`${id}:${payload}\n`, (error) => {
+      if (!error) return
+      pendingClipboardRequests.delete(id)
+      reject(error)
+    })
+  })
+}
+function runPowerShell(script, fallbackMessage) {
+  const encoded = Buffer.from(script, 'utf16le').toString('base64')
+  return new Promise((resolve, reject) => {
     const child = spawn('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-STA', '-WindowStyle', 'Hidden', '-EncodedCommand', encoded], { windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] })
     let error = ''
     child.stderr.on('data', (chunk) => { error += chunk.toString() })
     child.on('error', reject)
-    child.on('close', (code) => code === 0 ? resolve() : reject(new Error(error.trim() || '无法写入 Windows 文件剪贴板')))
+    child.on('close', (code) => code === 0 ? resolve() : reject(new Error(error.trim() || fallbackMessage)))
   })
 }
 
@@ -333,18 +410,20 @@ function configureUpdateChannel(settings) {
 }
 app.whenReady().then(async () => {
   Menu.setApplicationMenu(null)
+  const clipboardReady = process.platform === 'win32' ? ensureClipboardWorker().catch(() => {}) : Promise.resolve()
   protocol.handle('eazyflow-file', async (request) => {
     const url = new URL(request.url), projectId = decodeURIComponent(url.hostname), fileId = decodeURIComponent(url.pathname.slice(1)), { file, filePath } = await findFile(projectId, fileId)
     if (file.kind === 'folder') return new Response('Folder previews are not supported', { status: 400 })
     return net.fetch(pathToFileURL(filePath).toString())
   })
-  const store = await readStore()
+  const [store] = await Promise.all([readStore(), clipboardReady])
   configureUpdateChannel(store.settings)
   createWindow()
   if (!isDev) setTimeout(() => autoUpdater.checkForUpdatesAndNotify().catch(() => {}), 3500)
 })
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })
 app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow() })
+app.on('before-quit', () => { clipboardWorkerReady = false; clipboardWorker?.kill() })
 
 ipcMain.handle('store:get', readStore)
 ipcMain.handle('app:version', () => app.getVersion())
@@ -520,6 +599,41 @@ ipcMain.handle('file:copy', async (_event, projectId, fileId) => {
   if (process.platform === 'win32') await copyWindowsPaths([filePath])
   else { clipboard.clear(); clipboard.writeText(filePath) }
   return path.basename(filePath)
+})
+ipcMain.handle('file:copy-many', async (_event, projectId, category, entries) => {
+  const selected = await resolveSelectedEntries(projectId, category, entries)
+  if (process.platform === 'win32') await copyWindowsPaths(selected.map((entry) => entry.path))
+  else { clipboard.clear(); clipboard.writeText(selected.map((entry) => entry.path).join('\n')) }
+  return selected.map((entry) => entry.name)
+})
+ipcMain.handle('file:delete-many', async (_event, projectId, category, entries) => {
+  const selected = await resolveSelectedEntries(projectId, category, entries)
+  for (const entry of selected) await shell.trashItem(entry.path)
+  const store = await readStore(), project = store.projects.find((item) => item.id === projectId)
+  if (!project) throw new Error('项目不存在')
+  await syncProjectFiles(store, project); await writeStore(store)
+  return selected.length
+})
+ipcMain.handle('file:extract-zips', async (_event, projectId, category, entries) => {
+  const selected = await resolveSelectedEntries(projectId, category, entries)
+  if (selected.some((entry) => entry.isDirectory || path.extname(entry.name).toLowerCase() !== '.zip')) throw new Error('只能解压所选 ZIP 文件')
+  const created = []
+  try {
+    for (const archive of selected) {
+      const folderName = await uniqueName(path.dirname(archive.path), path.parse(archive.name).name || '解压文件'), destination = path.join(path.dirname(archive.path), folderName)
+      await fs.mkdir(destination); created.push(destination)
+      const payload = Buffer.from(JSON.stringify({ source: archive.path, destination }), 'utf8').toString('base64')
+      const script = `$ErrorActionPreference='Stop'; Add-Type -AssemblyName System.IO.Compression.FileSystem; $data=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${payload}')) | ConvertFrom-Json; [IO.Compression.ZipFile]::ExtractToDirectory($data.source,$data.destination)`
+      await runPowerShell(script, `无法解压“${archive.name}”`)
+    }
+  } catch (error) {
+    await Promise.all(created.map((target) => fs.rm(target, { recursive: true, force: true }).catch(() => {})))
+    throw error
+  }
+  const store = await readStore(), project = store.projects.find((item) => item.id === projectId)
+  if (!project) throw new Error('项目不存在')
+  await syncProjectFiles(store, project); await writeStore(store)
+  return created.map((target) => path.basename(target))
 })
 ipcMain.handle('file:rename', async (_event, projectId, fileId, requestedName) => {
   const { store, file, filePath } = await findFile(projectId, fileId)
