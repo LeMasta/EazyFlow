@@ -344,6 +344,7 @@ function FileSection({projectId,category,files,notice,onNotice,onChanged,onImpor
   const copySelected=async()=>{if(!refs.length)return;try{const names=await window.eazyflow.copyEntries(projectId,category.id,refs);showNotice(`已复制 ${names.length} 项，可在资源管理器中按 Ctrl+V 粘贴`)}catch(error){alert(error instanceof Error?error.message:'复制失败')}}
   const deleteSelected=async()=>{if(!refs.length||!confirm(`确定删除选中的 ${refs.length} 项吗？\n\n文件和文件夹会移入 Windows 回收站。`))return;try{await window.eazyflow.deleteEntries(projectId,category.id,refs);setSelectedKeys([]);await refresh()}catch(error){alert(error instanceof Error?error.message:'批量删除失败')}}
   const extractSelected=async()=>{if(!selectedZips.length)return;try{const names=await window.eazyflow.extractZipFiles(projectId,category.id,selectedZips.map(file=>({id:file.id,...(file.relativePath?{relativePath:file.relativePath}:{})})));setSelectedKeys([]);await refresh();showNotice(`已解压：${names.join('、')}`)}catch(error){alert(error instanceof Error?error.message:'解压失败')}}
+  const extractEntry=async(file:ProjectFile)=>{try{const names=await window.eazyflow.extractZipFiles(projectId,category.id,[{id:file.id,...(file.relativePath?{relativePath:file.relativePath}:{})}]);await refresh();showNotice(`已解压：${names.join('、')}`)}catch(error){alert(error instanceof Error?error.message:'解压失败')}}
   const toggleEntry=(file:ProjectFile)=>{const key=keyFor(file);setSelectedKeys(keys=>keys.includes(key)?keys.filter(item=>item!==key):[...keys,key])}
   const toggleAll=()=>setSelectedKeys(selectedEntries.length===displayed.length?[]:displayed.map(keyFor))
   const handleEntryClick=(event:React.MouseEvent,file:ProjectFile)=>{event.stopPropagation();if((event.target as HTMLElement).closest('.file-select-checkbox'))return;if(selectionMode)toggleEntry(file);else setSelectedId(file.id)}
@@ -371,7 +372,7 @@ function FileSection({projectId,category,files,notice,onNotice,onChanged,onImpor
       {documents.length>0&&<div className="file-list document-list">{documents.map(f=><div className={`file-row ${f.kind==='folder'?'folder-row':''} ${selectedId===f.id||selectedKeys.includes(keyFor(f))?'selected-file':''}`} key={f.id} onClick={e=>handleEntryClick(e,f)} onDoubleClick={e=>{if(!selectionMode&&renamingId!==f.id)openEntry(f)}} title={selectionMode?'勾选需要批量处理的文件':f.kind==='folder'?'双击在软件内进入文件夹':'双击打开文件'}>
         {selectionMode&&<input className="file-select-checkbox" type="checkbox" checked={selectedKeys.includes(keyFor(f))} onClick={e=>e.stopPropagation()} onChange={()=>toggleEntry(f)} aria-label={`选择 ${f.name}`}/>}
         <div className="file-type">{f.kind==='folder'?<FolderOpen/>:f.extension.replace('.','').slice(0,4)||'FILE'}</div><div className="file-info">{fileName(f)}<small>{f.kind==='folder'?'文件夹 · 双击进入':`${bytes(f.size)} · 双击打开`}</small></div>
-        {!selectionMode&&<FileActions file={f} onRename={()=>setRenamingId(f.id)} onCopy={copyEntry} onOpen={openEntry} onReveal={revealEntry} onDelete={deleteEntry}/>}
+        {!selectionMode&&<><FileActions file={f} onRename={()=>setRenamingId(f.id)} onCopy={copyEntry} onOpen={openEntry} onReveal={revealEntry} onDelete={deleteEntry}/>{f.kind==='file'&&f.extension.toLowerCase()==='.zip'&&<button className="secondary" onClick={event=>{event.stopPropagation();void extractEntry(f)}}>解压 ZIP</button>}</>}
       </div>)}</div>}
     </div>}
   </section>
