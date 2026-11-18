@@ -380,7 +380,7 @@ function FileSection({projectId,category,files,notice,onNotice,onChanged,onImpor
 
 function RenameInput({file,onSave,onCancel}:{file:ProjectFile;onSave:(name:string)=>void;onCancel:()=>void}){
   const [name,setName]=useState(file.name),done=useRef(false),finish=()=>{if(done.current)return;done.current=true;onSave(name)}
-  useEffect(()=>()=>{done.current=true},[])
+  useEffect(()=>{done.current=false;return()=>{done.current=true}},[])
   return <input className="file-rename-input" autoFocus value={name} onClick={e=>e.stopPropagation()} onChange={e=>setName(e.currentTarget.value)} onBlur={finish} onKeyDown={e=>{e.stopPropagation();if(e.key==='Enter'&&!e.nativeEvent.isComposing){e.preventDefault();finish()}else if(e.key==='Escape'){done.current=true;onCancel()}}}/>
 }
 

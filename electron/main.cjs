@@ -290,15 +290,18 @@ async function readStore() {
   if (migrated || !(await exists(p.store))) await writeStore(data)
   return data
 }
-async function findFile(projectId, fileId) {
-  const store = await readStore(), project = store.projects.find((p) => p.id === projectId), file = project?.files.find((f) => f.id === fileId)
+async function readStoredSnapshot() {
+  return JSON.parse(await fs.readFile(paths().store, 'utf8'))
+}
+async function findFile(projectId, fileId, synchronize = true) {
+  const store = await (synchronize ? readStore() : readStoredSnapshot()), project = store.projects.find((p) => p.id === projectId), file = project?.files.find((f) => f.id === fileId)
   if (!project || !file) throw new Error('文件或文件夹不存在')
   return { store, project, file, filePath: itemPath(store, project, file) }
 }
 async function resolveSelectedEntries(projectId, category, entries) {
   if (!categories.has(category)) throw new Error('无效文件分类')
   if (!Array.isArray(entries) || entries.length === 0 || entries.length > 500) throw new Error('请选择 1 到 500 个项目文件')
-  const store = await readStore(), project = store.projects.find((item) => item.id === projectId)
+  const store = await readStoredSnapshot(), project = store.projects.find((item) => item.id === projectId)
   if (!project) throw new Error('项目不存在')
   const resolved = []
   for (const entry of entries) {
@@ -594,7 +597,7 @@ ipcMain.handle('file:open', async (_event, projectId, fileId) => { const { fileP
 ipcMain.handle('file:preview', (_event, projectId, fileId) => showImageViewer(projectId, fileId))
 ipcMain.handle('file:reveal', async (_event, projectId, fileId) => { const { filePath } = await findFile(projectId, fileId); shell.showItemInFolder(filePath) })
 ipcMain.handle('file:copy', async (_event, projectId, fileId) => {
-  const { filePath } = await findFile(projectId, fileId)
+  const { filePath } = await findFile(projectId, fileId, false)
   if (!(await exists(filePath))) throw new Error('源文件不存在')
   if (process.platform === 'win32') await copyWindowsPaths([filePath])
   else { clipboard.clear(); clipboard.writeText(filePath) }
