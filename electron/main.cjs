@@ -6,13 +6,14 @@ const crypto = require('node:crypto')
 const { pathToFileURL } = require('node:url')
 const { spawn } = require('node:child_process')
 
-let mainWindow, viewerWindow
+let mainWindow, viewerWindow, clipboardWorker, clipboardWorkerStart, clipboardWorkerOutput = '', clipboardRequestId = 0, clipboardWorkerReady = false
+const pendingClipboardRequests = new Map()
 const isDev = Boolean(process.env.EAZYFLOW_DEV_URL)
 const categories = new Set(['task', 'reference', 'delivery', 'other'])
 const categoryFolders = { task: '任务文件', reference: '参考文件', delivery: '交付文件', other: '其他' }
 protocol.registerSchemesAsPrivileged([{ scheme: 'eazyflow-file', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }])
 
-const seed = () => ({ projects: [], groups: [], settings: null, storageRoot: null })
+const seed = () => ({ projects: [], groups: [], supportTargets: [], settings: null, storageRoot: null })
 function paths() {
   const root = path.join(app.getPath('userData'), 'workspace')
   return { root, store: path.join(root, 'eazyflow.json'), files: path.join(root, 'projects') }
@@ -29,6 +30,31 @@ function validItemName(value) {
   if (name.length > 255 || /[<>:"/\\|?*\u0000-\u001f]/.test(name) || /[. ]$/.test(name)) throw new Error('文件名包含 Windows 不支持的字符')
   if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(name)) throw new Error('该名称是 Windows 保留名称')
   return name
+}
+function supportTargetKey(value) { return String(value || '').trim().normalize('NFKC').toLocaleLowerCase('zh-CN') }
+function validSupportTargetName(value) {
+  const name = String(value || '').trim().normalize('NFKC')
+  if (!name) throw new Error('支撑对象名称不能为空')
+  if (name.length > 80) throw new Error('支撑对象名称不能超过 80 个字符')
+  return name
+}
+function addSupportTarget(store, value, createdAt = new Date().toISOString()) {
+  const name = validSupportTargetName(value), key = supportTargetKey(name)
+  const existing = store.supportTargets.find((target) => supportTargetKey(target.name) === key)
+  if (existing) return existing
+  const target = { id: crypto.randomUUID(), name, createdAt }
+  store.supportTargets.push(target)
+  return target
+}
+function resolveProjectSupportTarget(store, input) {
+  const id = String(input.supportTargetId || '').trim()
+  const name = String(input.supportTarget || '').trim()
+  if (id) {
+    const target = store.supportTargets.find((item) => item.id === id)
+    if (!target) throw new Error('所选支撑对象不存在，请刷新后重试')
+    return target
+  }
+  return name ? addSupportTarget(store, name) : undefined
 }
 async function uniqueName(parent, desired, excludedPath) {
   const parsed = path.parse(safeName(desired, '未命名'))
@@ -117,7 +143,7 @@ async function syncProjectFiles(store, project) {
   return changed
 }
 async function searchProjectFiles(query) {
-  const needle = String(query || '').trim().toLocaleLowerCase('zh-CN')
+  const needle = String(query || '').trim().normalize('NFKC').toLocaleLowerCase('zh-CN')
   if (!needle) return []
   const store = await readStore(), results = []
   for (const project of store.projects) {
@@ -125,13 +151,13 @@ async function searchProjectFiles(query) {
       const root = categoryPath(store, project, category).root
       if (!(await exists(root))) continue
       const pending = [{ directory: root, relativePath: '' }]
-      while (pending.length) {
-        const current = pending.shift()
+      for (let cursor = 0; cursor < pending.length; cursor++) {
+        const current = pending[cursor]
         const entries = await fs.readdir(current.directory, { withFileTypes: true }).catch(() => [])
         for (const entry of entries) {
           if (!entry.isFile() && !entry.isDirectory()) continue
           const relativePath = path.join(current.relativePath, entry.name).split(path.sep).join('/')
-          if (entry.name.toLocaleLowerCase('zh-CN').includes(needle)) results.push({
+          if (`${entry.name} ${relativePath}`.normalize('NFKC').toLocaleLowerCase('zh-CN').includes(needle)) results.push({
             projectId: project.id,
             projectName: project.name,
             projectColor: project.color,
@@ -164,13 +190,55 @@ async function readStore() {
     if (error?.code !== 'ENOENT' && !(error instanceof SyntaxError)) throw error
     data = seed()
   }
-  data.projects ||= []; data.groups ||= []; data.storageRoot ||= p.files
+  const hadSupportTargets = Array.isArray(data.supportTargets)
+  data.projects ||= []; data.groups ||= []; if (!hadSupportTargets) data.supportTargets = []; data.storageRoot ||= p.files
   await fs.mkdir(data.storageRoot, { recursive: true })
   if (data.settings) data.settings = {
     weekPreset: '双休', workDays: [1, 2, 3, 4, 5], bigWeekStartsThisWeek: true,
-    publicHolidays: true, makeupWorkdays: true, irregularRest: false, restDates: [], dayOverrides: {}, recentProjectDays: 3, receivePrereleases: false, ...data.settings
+    publicHolidays: true, makeupWorkdays: true, irregularRest: false, restDates: [], dayOverrides: {}, recentProjectDays: 3, receivePrereleases: false,
+    sidebarCollapsed: false, appearancePreset: 'violet', customAppearanceEnabled: false,
+    customAppearance: { accent: '#6652c8', page: '#f7f6fa', surface: '#ffffff', sidebar: '#24232c', tag: '#f2effa' },
+    ...data.settings,
+    customAppearance: { accent: '#6652c8', page: '#f7f6fa', surface: '#ffffff', sidebar: '#24232c', tag: '#f2effa', ...(data.settings.customAppearance || {}) }
   }
-  let migrated = false
+  let migrated = !hadSupportTargets
+  const targetsByKey = new Map(), targetsById = new Map(), normalizedTargets = []
+  for (const entry of data.supportTargets) {
+    const name = typeof entry === 'string' ? entry : entry?.name
+    if (!String(name || '').trim()) { migrated = true; continue }
+    const key = supportTargetKey(name)
+    if (targetsByKey.has(key)) { migrated = true; continue }
+    let id = typeof entry === 'object' && entry.id ? String(entry.id) : crypto.randomUUID()
+    if (targetsById.has(id)) { id = crypto.randomUUID(); migrated = true }
+    const target = {
+      id,
+      name: validSupportTargetName(name),
+      createdAt: typeof entry === 'object' && entry.createdAt ? entry.createdAt : new Date().toISOString()
+    }
+    if (typeof entry !== 'object' || !entry.id || entry.name !== target.name || !entry.createdAt) migrated = true
+    normalizedTargets.push(target); targetsByKey.set(key, target); targetsById.set(target.id, target)
+  }
+  data.supportTargets = normalizedTargets
+  for (const project of data.projects) {
+    const legacyName = String(project.supportTarget || '').trim()
+    let target = project.supportTargetId ? targetsById.get(project.supportTargetId) : undefined
+    if (!target && legacyName) {
+      const key = supportTargetKey(legacyName)
+      target = targetsByKey.get(key)
+      if (!target) {
+        target = addSupportTarget(data, legacyName, project.createdAt || new Date().toISOString())
+        targetsByKey.set(key, target); targetsById.set(target.id, target); migrated = true
+      }
+    }
+    if (target) {
+      if (project.supportTargetId !== target.id || project.supportTarget !== target.name) migrated = true
+      project.supportTargetId = target.id; project.supportTarget = target.name
+    } else {
+      if (project.supportTargetId) migrated = true
+      delete project.supportTargetId
+      if (!legacyName) delete project.supportTarget
+    }
+  }
   const reservedFolders = new Set()
   for (const project of data.projects) {
     const completed = project.status === '已完成' || project.status === '已归档'
@@ -222,22 +290,101 @@ async function readStore() {
   if (migrated || !(await exists(p.store))) await writeStore(data)
   return data
 }
-async function findFile(projectId, fileId) {
-  const store = await readStore(), project = store.projects.find((p) => p.id === projectId), file = project?.files.find((f) => f.id === fileId)
+async function readStoredSnapshot() {
+  return JSON.parse(await fs.readFile(paths().store, 'utf8'))
+}
+async function findFile(projectId, fileId, synchronize = true) {
+  const store = await (synchronize ? readStore() : readStoredSnapshot()), project = store.projects.find((p) => p.id === projectId), file = project?.files.find((f) => f.id === fileId)
   if (!project || !file) throw new Error('文件或文件夹不存在')
   return { store, project, file, filePath: itemPath(store, project, file) }
 }
+async function resolveSelectedEntries(projectId, category, entries) {
+  if (!categories.has(category)) throw new Error('无效文件分类')
+  if (!Array.isArray(entries) || entries.length === 0 || entries.length > 500) throw new Error('请选择 1 到 500 个项目文件')
+  const store = await readStoredSnapshot(), project = store.projects.find((item) => item.id === projectId)
+  if (!project) throw new Error('项目不存在')
+  const resolved = []
+  for (const entry of entries) {
+    let target, name
+    if (typeof entry?.relativePath === 'string' && entry.relativePath) {
+      ({ target } = categoryPath(store, project, category, entry.relativePath))
+      name = path.basename(target)
+    } else {
+      const file = project.files.find((item) => item.id === entry?.id && item.category === category)
+      if (!file) throw new Error('所选文件已不存在，请刷新后重试')
+      target = itemPath(store, project, file); name = file.name
+    }
+    const { root } = categoryPath(store, project, category), relative = path.relative(root, target)
+    if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) throw new Error('所选文件路径无效')
+    const stat = await fs.stat(target).catch(() => null)
+    if (!stat || (!stat.isFile() && !stat.isDirectory())) throw new Error(`文件不存在：${name}`)
+    resolved.push({ path: target, name, isDirectory: stat.isDirectory() })
+  }
+  const samePath = (left, right) => process.platform === 'win32' ? path.resolve(left).toLowerCase() === path.resolve(right).toLowerCase() : path.resolve(left) === path.resolve(right)
+  const isChildOf = (parent, child) => {
+    const relative = path.relative(parent, child)
+    return Boolean(relative && relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative))
+  }
+  return resolved.filter((entry, index) => !resolved.some((other, otherIndex) => otherIndex !== index && (samePath(other.path, entry.path) || other.isDirectory && isChildOf(other.path, entry.path))))
+}
 
-function copyWindowsPaths(filePaths) {
+function ensureClipboardWorker() {
+  if (process.platform !== 'win32') return Promise.resolve()
+  if (clipboardWorker && !clipboardWorker.killed) return clipboardWorkerReady ? Promise.resolve() : clipboardWorkerStart || Promise.resolve()
+  clipboardWorkerOutput = ''
+  clipboardWorkerReady = false
+  const script = `$ErrorActionPreference='Stop'; Add-Type -AssemblyName System.Windows.Forms; [Console]::Out.WriteLine('READY'); while($line=[Console]::In.ReadLine()){ $parts=$line.Split(':',2); $id=$parts[0]; try { $json=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($parts[1])); $paths=@(ConvertFrom-Json -InputObject $json); $list=New-Object System.Collections.Specialized.StringCollection; foreach($item in $paths){[void]$list.Add([string]$item)}; $ok=$false; for($i=0;$i -lt 8 -and -not $ok;$i++){try{[Windows.Forms.Clipboard]::SetFileDropList($list);$ok=$true}catch{Start-Sleep -Milliseconds 35}}; if($ok){[Console]::Out.WriteLine("$id OK")}else{[Console]::Out.WriteLine("$id ERR")} } catch { [Console]::Out.WriteLine("$id ERR") } }`
+  const encoded = Buffer.from(script, 'utf16le').toString('base64')
+  const child = spawn('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-STA', '-WindowStyle', 'Hidden', '-EncodedCommand', encoded], { windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] })
+  clipboardWorker = child
+  let resolveReady, rejectReady, readySettled = false
+  const failReady = (error) => { if (!readySettled) { readySettled = true; rejectReady(error) } }
+  clipboardWorkerStart = new Promise((resolve, reject) => { resolveReady = resolve; rejectReady = reject }).finally(() => { clipboardWorkerStart = undefined })
+  child.stdout.setEncoding('utf8')
+  child.stdout.on('data', (chunk) => {
+    clipboardWorkerOutput += chunk
+    const lines = clipboardWorkerOutput.split(/\r?\n/)
+    clipboardWorkerOutput = lines.pop() || ''
+    for (const line of lines) {
+      if (line.trim() === 'READY') { clipboardWorkerReady = true; readySettled = true; resolveReady(); continue }
+      const match = /^(\d+) (OK|ERR)$/.exec(line.trim())
+      if (!match) continue
+      const pending = pendingClipboardRequests.get(Number(match[1]))
+      if (!pending) continue
+      pendingClipboardRequests.delete(Number(match[1]))
+      match[2] === 'OK' ? pending.resolve() : pending.reject(new Error('无法写入 Windows 文件剪贴板，请重试'))
+    }
+  })
+  child.once('error', (error) => { if (clipboardWorker === child) clipboardWorker = undefined; clipboardWorkerReady = false; failReady(error) })
+  child.on('close', () => {
+    if (clipboardWorker === child) { clipboardWorker = undefined; clipboardWorkerReady = false }
+    failReady(new Error('Windows 文件剪贴板服务启动失败'))
+    for (const [id, pending] of pendingClipboardRequests) { pendingClipboardRequests.delete(id); pending.reject(new Error('Windows 文件剪贴板服务已退出，请重试')) }
+  })
+  return clipboardWorkerStart
+}
+async function copyWindowsPaths(filePaths) {
+  await ensureClipboardWorker()
+  const child = clipboardWorker
+  if (!child || child.killed || !child.stdin.writable) throw new Error('Windows 文件剪贴板服务未就绪，请重试')
+  const id = ++clipboardRequestId, payload = Buffer.from(JSON.stringify(filePaths), 'utf8').toString('base64')
   return new Promise((resolve, reject) => {
-    const payload = Buffer.from(JSON.stringify(filePaths), 'utf8').toString('base64')
-    const script = `$ErrorActionPreference='Stop'; Add-Type -AssemblyName System.Windows.Forms; $json=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${payload}')); $paths=ConvertFrom-Json $json; $list=New-Object System.Collections.Specialized.StringCollection; foreach($item in @($paths)){[void]$list.Add([string]$item)}; for($i=0;$i -lt 4;$i++){try{[Windows.Forms.Clipboard]::SetFileDropList($list); exit 0}catch{if($i -eq 3){throw}; Start-Sleep -Milliseconds 80}}`
-    const encoded = Buffer.from(script, 'utf16le').toString('base64')
+    pendingClipboardRequests.set(id, { resolve, reject })
+    child.stdin.write(`${id}:${payload}\n`, (error) => {
+      if (!error) return
+      pendingClipboardRequests.delete(id)
+      reject(error)
+    })
+  })
+}
+function runPowerShell(script, fallbackMessage) {
+  const encoded = Buffer.from(script, 'utf16le').toString('base64')
+  return new Promise((resolve, reject) => {
     const child = spawn('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-STA', '-WindowStyle', 'Hidden', '-EncodedCommand', encoded], { windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] })
     let error = ''
     child.stderr.on('data', (chunk) => { error += chunk.toString() })
     child.on('error', reject)
-    child.on('close', (code) => code === 0 ? resolve() : reject(new Error(error.trim() || '无法写入 Windows 文件剪贴板')))
+    child.on('close', (code) => code === 0 ? resolve() : reject(new Error(error.trim() || fallbackMessage)))
   })
 }
 
@@ -266,18 +413,20 @@ function configureUpdateChannel(settings) {
 }
 app.whenReady().then(async () => {
   Menu.setApplicationMenu(null)
+  const clipboardReady = process.platform === 'win32' ? ensureClipboardWorker().catch(() => {}) : Promise.resolve()
   protocol.handle('eazyflow-file', async (request) => {
     const url = new URL(request.url), projectId = decodeURIComponent(url.hostname), fileId = decodeURIComponent(url.pathname.slice(1)), { file, filePath } = await findFile(projectId, fileId)
     if (file.kind === 'folder') return new Response('Folder previews are not supported', { status: 400 })
     return net.fetch(pathToFileURL(filePath).toString())
   })
-  const store = await readStore()
+  const [store] = await Promise.all([readStore(), clipboardReady])
   configureUpdateChannel(store.settings)
   createWindow()
   if (!isDev) setTimeout(() => autoUpdater.checkForUpdatesAndNotify().catch(() => {}), 3500)
 })
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })
 app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow() })
+app.on('before-quit', () => { clipboardWorkerReady = false; clipboardWorker?.kill() })
 
 ipcMain.handle('store:get', readStore)
 ipcMain.handle('app:version', () => app.getVersion())
@@ -285,7 +434,10 @@ ipcMain.handle('search:files', (_event, query) => searchProjectFiles(query))
 ipcMain.handle('project:create', async (_event, input) => {
   const store = await readStore(), folderName = await uniqueName(store.storageRoot, input.name)
   const groupId = await resolveAssociation(store, input)
+  const supportTarget = resolveProjectSupportTarget(store, input)
   const clean = { ...input }; for (const key of ['predecessorId', 'relatedProjectId', 'targetGroupId', 'groupName', 'groupColor', 'clearGroup']) delete clean[key]
+  if (supportTarget) { clean.supportTargetId = supportTarget.id; clean.supportTarget = supportTarget.name }
+  else { delete clean.supportTargetId; delete clean.supportTarget }
   const project = { ...clean, ...(groupId ? { groupId } : {}), id: crypto.randomUUID(), folderName, createdAt: new Date().toISOString(), files: [] }
   await ensureProjectFolder(store.storageRoot, folderName); store.projects.push(project); await writeStore(store); return project
 })
@@ -298,18 +450,56 @@ ipcMain.handle('project:update', async (_event, id, patch) => {
   const store = await readStore(), index = store.projects.findIndex((p) => p.id === id)
   if (index < 0) throw new Error('项目不存在')
   const project = store.projects[index], safe = { ...patch }
+  const supportTargetChanged = Object.prototype.hasOwnProperty.call(safe, 'supportTargetId') || Object.prototype.hasOwnProperty.call(safe, 'supportTarget')
+  const supportTarget = supportTargetChanged ? resolveProjectSupportTarget(store, safe) : undefined
+  delete safe.supportTargetId; delete safe.supportTarget
   const associationChanged = ['relatedProjectId', 'targetGroupId', 'groupName', 'clearGroup'].some((key) => Object.prototype.hasOwnProperty.call(safe, key))
   const nextGroupId = associationChanged ? await resolveAssociation(store, safe, project) : project.groupId
   for (const key of ['predecessorId', 'relatedProjectId', 'targetGroupId', 'groupName', 'groupColor', 'clearGroup', 'id', 'files', 'createdAt', 'folderName', 'groupId']) delete safe[key]
   if (associationChanged) { if (nextGroupId) safe.groupId = nextGroupId; else delete project.groupId }
   if (typeof safe.name === 'string' && safe.name.trim() && safe.name !== project.name) {
     const oldPath = path.join(store.storageRoot, project.folderName), nextFolder = await uniqueName(store.storageRoot, safe.name, oldPath)
-    if (nextFolder !== project.folderName) await fs.rename(oldPath, path.join(store.storageRoot, nextFolder))
+    if (nextFolder !== project.folderName) {
+      try { await fs.rename(oldPath, path.join(store.storageRoot, nextFolder)) }
+      catch (error) {
+        if (error.code !== 'ENOENT') throw error
+        await ensureProjectFolder(store.storageRoot, nextFolder)
+      }
+    }
     project.folderName = nextFolder
+  }
+  if (supportTargetChanged) {
+    delete project.supportTargetId; delete project.supportTarget
+    if (supportTarget) { project.supportTargetId = supportTarget.id; project.supportTarget = supportTarget.name }
   }
   store.projects[index] = { ...project, ...safe }
   store.groups = store.groups.filter((group) => store.projects.some((item) => item.groupId === group.id))
   await writeStore(store); return store.projects[index]
+})
+ipcMain.handle('support-target:create', async (_event, rawName) => {
+  const store = await readStore(), name = validSupportTargetName(rawName)
+  const existing = store.supportTargets.find((target) => supportTargetKey(target.name) === supportTargetKey(name))
+  if (existing) return existing
+  const target = addSupportTarget(store, name)
+  await writeStore(store); return target
+})
+ipcMain.handle('support-target:update', async (_event, id, rawName) => {
+  const store = await readStore(), target = store.supportTargets.find((item) => item.id === id)
+  if (!target) throw new Error('支撑对象不存在')
+  const name = validSupportTargetName(rawName)
+  const duplicate = store.supportTargets.find((item) => item.id !== id && supportTargetKey(item.name) === supportTargetKey(name))
+  if (duplicate) throw new Error('已存在同名支撑对象，请选择现有标签')
+  target.name = name
+  for (const project of store.projects) if (project.supportTargetId === id) project.supportTarget = name
+  await writeStore(store); return target
+})
+ipcMain.handle('support-target:delete', async (_event, id) => {
+  const store = await readStore(), target = store.supportTargets.find((item) => item.id === id)
+  if (!target) throw new Error('支撑对象不存在')
+  const inUse = store.projects.filter((project) => project.supportTargetId === id).length
+  if (inUse) throw new Error(`该支撑对象仍关联 ${inUse} 个项目，请先为这些项目改选其他对象`)
+  store.supportTargets = store.supportTargets.filter((item) => item.id !== id)
+  await writeStore(store)
 })
 ipcMain.handle('project:delete', async (_event, id) => {
   const store = await readStore(), project = store.projects.find((p) => p.id === id)
@@ -336,7 +526,18 @@ ipcMain.handle('group:update', async (_event, id, patch) => {
 ipcMain.handle('settings:update', async (_event, settings) => {
   const values = ['startHour', 'endHour', 'breakStart', 'breakEnd'].map((key) => Number(settings[key]))
   if (values.some((value) => !Number.isFinite(value)) || values[0] < 0 || values[1] > 24 || values[0] >= values[1] || values[2] < values[0] || values[3] > values[1] || values[2] >= values[3]) throw new Error('工作时间设置无效')
-  const normalized = { ...settings, receivePrereleases: settings.receivePrereleases === true }
+  const presets = new Set(['violet', 'sage', 'ocean', 'amber'])
+  const colorDefaults = { accent: '#6652c8', page: '#f7f6fa', surface: '#ffffff', sidebar: '#24232c', tag: '#f2effa' }
+  const rawColors = settings.customAppearance && typeof settings.customAppearance === 'object' ? settings.customAppearance : {}
+  const customAppearance = Object.fromEntries(Object.entries(colorDefaults).map(([key, fallback]) => [key, /^#[0-9a-f]{6}$/i.test(rawColors[key]) ? rawColors[key] : fallback]))
+  const normalized = {
+    ...settings,
+    receivePrereleases: settings.receivePrereleases === true,
+    sidebarCollapsed: settings.sidebarCollapsed === true,
+    appearancePreset: presets.has(settings.appearancePreset) ? settings.appearancePreset : 'violet',
+    customAppearanceEnabled: settings.customAppearanceEnabled === true,
+    customAppearance
+  }
   const store = await readStore(); store.settings = normalized; await writeStore(store); configureUpdateChannel(normalized); return normalized
 })
 async function importPaths(projectId, category, sourcePaths, destination = '') {
@@ -396,11 +597,46 @@ ipcMain.handle('file:open', async (_event, projectId, fileId) => { const { fileP
 ipcMain.handle('file:preview', (_event, projectId, fileId) => showImageViewer(projectId, fileId))
 ipcMain.handle('file:reveal', async (_event, projectId, fileId) => { const { filePath } = await findFile(projectId, fileId); shell.showItemInFolder(filePath) })
 ipcMain.handle('file:copy', async (_event, projectId, fileId) => {
-  const { filePath } = await findFile(projectId, fileId)
+  const { filePath } = await findFile(projectId, fileId, false)
   if (!(await exists(filePath))) throw new Error('源文件不存在')
   if (process.platform === 'win32') await copyWindowsPaths([filePath])
   else { clipboard.clear(); clipboard.writeText(filePath) }
   return path.basename(filePath)
+})
+ipcMain.handle('file:copy-many', async (_event, projectId, category, entries) => {
+  const selected = await resolveSelectedEntries(projectId, category, entries)
+  if (process.platform === 'win32') await copyWindowsPaths(selected.map((entry) => entry.path))
+  else { clipboard.clear(); clipboard.writeText(selected.map((entry) => entry.path).join('\n')) }
+  return selected.map((entry) => entry.name)
+})
+ipcMain.handle('file:delete-many', async (_event, projectId, category, entries) => {
+  const selected = await resolveSelectedEntries(projectId, category, entries)
+  for (const entry of selected) await shell.trashItem(entry.path)
+  const store = await readStore(), project = store.projects.find((item) => item.id === projectId)
+  if (!project) throw new Error('项目不存在')
+  await syncProjectFiles(store, project); await writeStore(store)
+  return selected.length
+})
+ipcMain.handle('file:extract-zips', async (_event, projectId, category, entries) => {
+  const selected = await resolveSelectedEntries(projectId, category, entries)
+  if (selected.some((entry) => entry.isDirectory || path.extname(entry.name).toLowerCase() !== '.zip')) throw new Error('只能解压所选 ZIP 文件')
+  const created = []
+  try {
+    for (const archive of selected) {
+      const folderName = await uniqueName(path.dirname(archive.path), path.parse(archive.name).name || '解压文件'), destination = path.join(path.dirname(archive.path), folderName)
+      await fs.mkdir(destination); created.push(destination)
+      const payload = Buffer.from(JSON.stringify({ source: archive.path, destination }), 'utf8').toString('base64')
+      const script = `$ErrorActionPreference='Stop'; Add-Type -AssemblyName System.IO.Compression.FileSystem; $data=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${payload}')) | ConvertFrom-Json; [IO.Compression.ZipFile]::ExtractToDirectory($data.source,$data.destination)`
+      await runPowerShell(script, `无法解压“${archive.name}”`)
+    }
+  } catch (error) {
+    await Promise.all(created.map((target) => fs.rm(target, { recursive: true, force: true }).catch(() => {})))
+    throw error
+  }
+  const store = await readStore(), project = store.projects.find((item) => item.id === projectId)
+  if (!project) throw new Error('项目不存在')
+  await syncProjectFiles(store, project); await writeStore(store)
+  return created.map((target) => path.basename(target))
 })
 ipcMain.handle('file:rename', async (_event, projectId, fileId, requestedName) => {
   const { store, file, filePath } = await findFile(projectId, fileId)
