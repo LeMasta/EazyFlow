@@ -299,8 +299,37 @@ function MonthView({month,now,projects,settings,onOpen,onOpenDay,onContext,onDat
 function ProjectPage({project,projects,groups,supportTargets,createSupportTarget,now,backLabel,onBack,onOpenGroup,onChanged,onDelete}:{project:Project;projects:Project[];groups:ProjectGroup[];supportTargets:SupportTarget[];createSupportTarget:(name:string)=>Promise<SupportTarget>;now:Date;backLabel:string;onBack:()=>void;onOpenGroup:(group:ProjectGroup)=>void;onChanged:()=>void;onDelete:()=>void}){
   const status=effectiveStatus(project,now),overdue=isOverdue(project,now),variance=deliveryVariance(project),group=groups.find(item=>item.id===project.groupId)
   const [editing,setEditing]=useState(false)
-  const finish=async()=>{if(confirm(`结束项目“${project.name}”？\n\n时间表会立即以当前时间截断项目占用。`)){await window.eazyflow.updateProject(project.id,{status:'已完成',completedAt:new Date().toISOString()});await onChanged()}}
-  return <div className="project-page"><header className="project-top"><button className="back" onClick={onBack}><ChevronLeft/>{backLabel}</button><div className="project-actions">{status!=='已完成'&&<button className="finish-button" onClick={finish}><CheckCircle2/>结束项目</button>}<details className="more-menu"><summary className="ghost"><MoreHorizontal/></summary><div className="menu-popover"><button onClick={()=>setEditing(true)}><Edit3/>项目编辑</button><button className="menu-delete" onClick={onDelete}><Trash2/>删除项目</button></div></details></div></header><section className={`project-hero ${status==='已完成'?'completed-hero':''} ${overdue?'overdue-hero':''} ${group?'continued-hero':''}`}><div className="project-title"><i style={{background:overdue?'#d0444f':project.color}}/><div><p className="eyebrow">项目工作区</p><h1>{status==='已完成'?'✓ ':overdue?'! ':''}{project.name}</h1>{group&&<button className="project-relation" onClick={()=>onOpenGroup(group)}><Link2/>查看项目组“{group.name}”</button>}<p>{project.description||'暂无项目说明'}</p>{project.supportTarget&&<p className="project-support-target"><b>支撑对象</b><span className="support-target-pill">{project.supportTarget}</span></p>}</div></div><div className="project-meta"><div><span>状态</span><b className={`status ${overdue?'overdue-status':''}`}>{overdue?'已逾期':status}</b></div><div><span>开始时间</span><b>{format(parseISO(project.startAt),'yyyy年M月d日 HH:mm')}</b></div><div><span>计划交付</span><b>{project.dueAt?format(parseISO(project.dueAt),'yyyy年M月d日 HH:mm'):'未设置'}</b></div><div><span>结束时间</span><b>{project.completedAt?format(parseISO(project.completedAt),'yyyy年M月d日 HH:mm'):'尚未结束'}</b>{variance&&<em className={variance.startsWith('逾期')?'late-variance':'early-variance'}>{variance}</em>}</div></div></section><ProjectFiles key={project.id} project={project} onChanged={onChanged}/>{editing&&<ProjectEditor project={project} projects={projects} groups={groups} supportTargets={supportTargets} createSupportTarget={createSupportTarget} onClose={()=>setEditing(false)} onSave={async patch=>{await window.eazyflow.updateProject(project.id,patch);setEditing(false);await onChanged()}}/>}</div>
+  const [confirmFinish, setConfirmFinish] = useState(false)
+  const [finishing, setFinishing] = useState(false)
+  const [finishError, setFinishError] = useState('')
+  const finish = async () => {
+    if (finishing) return
+    setFinishing(true)
+    setFinishError('')
+    try {
+      await window.eazyflow.updateProject(project.id, {status:'已完成', completedAt:new Date().toISOString()})
+      await onChanged()
+      setConfirmFinish(false)
+    } catch (error) {
+      setFinishError(error instanceof Error ? error.message : '结束项目失败，请重试')
+    } finally {
+      setFinishing(false)
+    }
+  }
+  return <div className="project-page"><header className="project-top"><button className="back" onClick={onBack}><ChevronLeft/>{backLabel}</button><div className="project-actions">{status!=='已完成'&&<button className="finish-button" onClick={()=>{setFinishError('');setConfirmFinish(true)}}><CheckCircle2/>结束项目</button>}<details className="more-menu"><summary className="ghost"><MoreHorizontal/></summary><div className="menu-popover"><button onClick={()=>setEditing(true)}><Edit3/>项目编辑</button><button className="menu-delete" onClick={onDelete}><Trash2/>删除项目</button></div></details></div></header><section className={`project-hero ${status==='已完成'?'completed-hero':''} ${overdue?'overdue-hero':''} ${group?'continued-hero':''}`}><div className="project-title"><i style={{background:overdue?'#d0444f':project.color}}/><div><p className="eyebrow">项目工作区</p><h1>{status==='已完成'?'✓ ':overdue?'! ':''}{project.name}</h1>{group&&<button className="project-relation" onClick={()=>onOpenGroup(group)}><Link2/>查看项目组“{group.name}”</button>}<p>{project.description||'暂无项目说明'}</p>{project.supportTarget&&<p className="project-support-target"><b>支撑对象</b><span className="support-target-pill">{project.supportTarget}</span></p>}</div></div><div className="project-meta"><div><span>状态</span><b className={`status ${overdue?'overdue-status':''}`}>{overdue?'已逾期':status}</b></div><div><span>开始时间</span><b>{format(parseISO(project.startAt),'yyyy年M月d日 HH:mm')}</b></div><div><span>计划交付</span><b>{project.dueAt?format(parseISO(project.dueAt),'yyyy年M月d日 HH:mm'):'未设置'}</b></div><div><span>结束时间</span><b>{project.completedAt?format(parseISO(project.completedAt),'yyyy年M月d日 HH:mm'):'尚未结束'}</b>{variance&&<em className={variance.startsWith('逾期')?'late-variance':'early-variance'}>{variance}</em>}</div></div></section>{confirmFinish&&createPortal(
+      <div className="modal-backdrop">
+        <section className="modal" role="dialog" aria-modal="true" aria-label="结束项目"
+          onKeyDown={event=>{if(event.key==='Escape'&&!finishing)setConfirmFinish(false)}}>
+          <h2>结束项目“{project.name}”？</h2>
+          <p>时间表会以当前时间作为项目结束时间。</p>
+          {finishError&&<p role="alert">{finishError}</p>}
+          <div className="modal-actions">
+            <button autoFocus className="secondary" disabled={finishing} onClick={()=>setConfirmFinish(false)}>取消</button>
+            <button className="primary" disabled={finishing} onClick={()=>void finish()}>{finishing?'正在结束…':'结束项目'}</button>
+          </div>
+        </section>
+      </div>, document.body
+    )}<ProjectFiles key={project.id} project={project} onChanged={onChanged}/>{editing&&<ProjectEditor project={project} projects={projects} groups={groups} supportTargets={supportTargets} createSupportTarget={createSupportTarget} onClose={()=>setEditing(false)} onSave={async patch=>{await window.eazyflow.updateProject(project.id,patch);setEditing(false);await onChanged()}}/>}</div>
 }
 
 function ProjectGroupPage({group,projects,groups,now,onBack,onOpen,onChanged}:{group:ProjectGroup;projects:Project[];groups:ProjectGroup[];now:Date;onBack:()=>void;onOpen:(project:Project)=>void;onChanged:()=>void}){
